@@ -7,7 +7,7 @@
 
 ## Phase 2: LSP Server Skeleton
 - [x] Task: Implement `ToposServer` struct in `topos-lsp` using `tower-lsp-server` fa4ffa0
-- [ ] Task: Write unit tests for LSP server initialization
+- [x] Task: Write unit tests for LSP server initialization 1334256
 - [ ] Task: Implement stdio transport in `topos-cli` to launch the LSP server
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: LSP Server Skeleton' (Protocol in workflow.md)
 
