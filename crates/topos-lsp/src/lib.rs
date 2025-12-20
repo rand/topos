@@ -46,9 +46,18 @@ pub async fn run_server() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tower_lsp::LspService;
 
-    #[test]
-    fn it_works() {
-        assert!(true);
+    #[tokio::test]
+    async fn test_initialize() {
+        let (service, _) = LspService::new(|client| ToposServer { client });
+        
+        let params = InitializeParams {
+            ..Default::default()
+        };
+        
+        let response = service.inner().initialize(params).await.unwrap();
+        
+        assert_eq!(response.server_info.as_ref().unwrap().name, "topos-lsp");
     }
 }
