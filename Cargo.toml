@@ -1,0 +1,163 @@
+# Topos Workspace Configuration
+# 
+# This is the root Cargo.toml for the Topos toolchain.
+# All crates in the workspace share these dependency versions.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/topos-syntax",
+    "crates/topos-analysis",
+    "crates/topos-diff",
+    "crates/topos-context",
+    "crates/topos-lsp",
+    "crates/topos-mcp",
+    "crates/topos-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.82"
+license = "MIT"
+repository = "https://github.com/your-org/topos"
+authors = ["Topos Contributors"]
+description = "A semantic contract language for human-AI collaboration"
+keywords = ["specification", "lsp", "ai", "mcp", "typed-holes"]
+categories = ["development-tools", "text-editors"]
+
+[workspace.dependencies]
+# ============================================================================
+# REFLECTION & SERIALIZATION (facet.rs ecosystem)
+# ============================================================================
+# facet.rs is the foundation of Topos's type system.
+# One derive macro provides serialization, diffing, pretty-printing, and more.
+# See: https://facet.rs
+#
+facet = "0.28"                    # Core reflection trait and derive macro
+facet-core = "0.28"               # Core types (Shape, Field, etc.)
+facet-reflect = "0.28"            # Peek (read) and Partial (construct) APIs
+facet-json = "0.28"               # JSON serialization
+facet-yaml = "0.28"               # YAML serialization
+facet-toml = "0.28"               # TOML serialization
+facet-pretty = "0.28"             # Colored pretty-printing with redaction
+facet-assert = "0.28"             # Structural comparison for tests
+
+# ============================================================================
+# INCREMENTAL COMPUTATION (Salsa)
+# ============================================================================
+# Salsa provides incremental, memoized computation.
+# Used by rust-analyzer for sub-second analysis of large codebases.
+# See: https://salsa-rs.github.io/salsa
+#
+salsa = "0.18"                    # Core incremental computation framework
+
+# ============================================================================
+# PARSING (tree-sitter)
+# ============================================================================
+# tree-sitter provides incremental parsing with error recovery.
+# Essential for LSP responsiveness - sub-millisecond reparsing on edit.
+# See: https://tree-sitter.github.io
+#
+tree-sitter = "0.25"              # Core parser runtime
+tree-sitter-topos = { path = "tree-sitter-topos" }  # Generated grammar
+
+# ============================================================================
+# LANGUAGE SERVER PROTOCOL (tower-lsp-server)
+# ============================================================================
+# tower-lsp-server is the community fork with active maintenance.
+# Uses latest lsp-types and modern async patterns.
+# See: https://github.com/tower-lsp-community/tower-lsp-server
+#
+tower-lsp-server = "0.1"          # LSP server framework
+lsp-types = "0.97"                # LSP type definitions
+
+# ============================================================================
+# MODEL CONTEXT PROTOCOL (rmcp)
+# ============================================================================
+# rmcp is the official Rust SDK for MCP from the modelcontextprotocol org.
+# Supports the MCP 2025-06-18 specification.
+# See: https://github.com/modelcontextprotocol/rust-sdk
+#
+rmcp = { version = "0.8", features = ["server"] }   # MCP server SDK
+rmcp-macros = "0.8"               # Tool definition macros
+
+# ============================================================================
+# TEXT HANDLING
+# ============================================================================
+# Efficient text manipulation for editor operations.
+#
+ropey = "1.6"                     # Rope data structure for text editing
+codespan-reporting = "0.11"       # Pretty diagnostic rendering
+
+# ============================================================================
+# ASYNC RUNTIME
+# ============================================================================
+# tokio is the standard async runtime for Rust.
+#
+tokio = { version = "1.40", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+
+# ============================================================================
+# COMMAND LINE
+# ============================================================================
+# clap provides derive-based CLI argument parsing.
+#
+clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }
+colored = "2.1"                   # Terminal colors
+
+# ============================================================================
+# TESTING
+# ============================================================================
+# Comprehensive testing toolkit with snapshots and property testing.
+#
+insta = { version = "1.40", features = ["json", "yaml"] }  # Snapshot testing
+proptest = "1.5"                  # Property-based testing
+
+# ============================================================================
+# UTILITIES
+# ============================================================================
+# Common utilities and error handling.
+#
+thiserror = "2.0"                 # Derive Error trait
+anyhow = "1.0"                    # Flexible error handling
+tracing = "0.1"                   # Structured logging
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+once_cell = "1.19"                # Lazy static initialization
+parking_lot = "0.12"              # Fast synchronization primitives
+dashmap = "6.0"                   # Concurrent hashmap
+indexmap = "2.2"                  # Insertion-ordered hashmap
+smol_str = "0.2"                  # Small string optimization
+url = "2.5"                       # URL parsing
+walkdir = "2.5"                   # Directory traversal
+notify = "6.1"                    # File system watching
+toml = "0.8"                      # TOML parsing (for topos.toml config)
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+
+# ============================================================================
+# PROFILE CONFIGURATION
+# ============================================================================
+
+[profile.dev]
+# Faster incremental builds for development
+incremental = true
+
+[profile.release]
+# Optimize for size and speed
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.release-debug]
+# Release with debug symbols for profiling
+inherits = "release"
+debug = true
+strip = false
