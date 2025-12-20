@@ -1,0 +1,12 @@
+[package]
+name = "topos-syntax"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Core syntax and AST for Topos"
+
+[dependencies]
+tree-sitter.workspace = true
+facet-core.workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "topos-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "MCP server for Topos"
+
+[dependencies]
+rmcp.workspace = true
+tokio.workspace = true
+topos-analysis = { path = "../topos-analysis" }

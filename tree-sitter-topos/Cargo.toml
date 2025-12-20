@@ -1,0 +1,16 @@
+[package]
+name = "tree-sitter-topos"
+version = "0.1.0"
+edition = "2024"
+description = "Tree-sitter grammar for Topos"
+license = "MIT"
+authors = ["Topos Contributors"]
+
+[dependencies]
+tree-sitter = "0.25"
+
+[build-dependencies]
+cc = "1.0"
+
+[lib]
+path = "bindings/rust/lib.rs"

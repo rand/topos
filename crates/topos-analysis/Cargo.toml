@@ -1,0 +1,13 @@
+[package]
+name = "topos-analysis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Semantic analysis and query engine for Topos"
+
+[dependencies]
+salsa.workspace = true
+topos-syntax = { path = "../topos-syntax" }
+facet-core.workspace = true

@@ -1,0 +1,11 @@
+[package]
+name = "topos-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "AI context generation for Topos"
+
+[dependencies]
+topos-analysis = { path = "../topos-analysis" }

@@ -1,0 +1,1 @@
+/Users/rand/src/topos/target/debug/topos: /Users/rand/src/topos/crates/topos-analysis/src/lib.rs /Users/rand/src/topos/crates/topos-cli/src/main.rs /Users/rand/src/topos/crates/topos-lsp/src/lib.rs /Users/rand/src/topos/crates/topos-mcp/src/lib.rs /Users/rand/src/topos/crates/topos-syntax/src/lib.rs
