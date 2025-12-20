@@ -11,3 +11,6 @@ description = "Semantic analysis and query engine for Topos"
 salsa.workspace = true
 topos-syntax = { path = "../topos-syntax" }
 facet-core.workspace = true
+tree-sitter-topos = { path = "../../tree-sitter-topos" }
+tree-sitter.workspace = true
+
