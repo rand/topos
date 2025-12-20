@@ -1,7 +1,7 @@
 # Plan: LSP Skeleton and Workspace Solidification
 
 ## Phase 1: Workspace Initialization
-- [ ] Task: Create directory structure for all workspace crates (`crates/topos-*`)
+- [x] Task: Create directory structure for all workspace crates (`crates/topos-*`) 9c8ec6d
 - [ ] Task: Initialize `Cargo.toml` for each crate with basic dependencies
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Workspace Initialization' (Protocol in workflow.md)
 
