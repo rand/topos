@@ -13,6 +13,6 @@
 
 ## Phase 3: Basic Syntax Integration
 - [x] Task: Integrate `tree-sitter-topos` into `topos-analysis` 674b6da
-- [ ] Task: Implement a basic "check" function that uses tree-sitter to find syntax errors
+- [x] Task: Implement a basic "check" function that uses tree-sitter to find syntax errors b811e67
 - [ ] Task: Connect the check function to LSP diagnostics
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Basic Syntax Integration' (Protocol in workflow.md)
