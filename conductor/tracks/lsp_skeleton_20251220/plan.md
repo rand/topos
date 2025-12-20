@@ -1,10 +1,9 @@
 # Plan: LSP Skeleton and Workspace Solidification
 
-## Phase 1: Workspace Initialization
+## Phase 1: Workspace Initialization [checkpoint: 94fd5b4]
 - [x] Task: Create directory structure for all workspace crates (`crates/topos-*`) 9c8ec6d
 - [x] Task: Initialize `Cargo.toml` for each crate with basic dependencies 9067056
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Workspace Initialization' (Protocol in workflow.md)
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Workspace Initialization' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Workspace Initialization' (Protocol in workflow.md) 94fd5b4
 
 ## Phase 2: LSP Server Skeleton
 - [ ] Task: Implement `ToposServer` struct in `topos-lsp` using `tower-lsp-server`
