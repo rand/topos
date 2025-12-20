@@ -7,6 +7,38 @@ pub struct ToposServer {
     pub client: Client,
 }
 
+impl ToposServer {
+    async fn validate_text(&self, uri: Url, text: &str) {
+        // We use catch_unwind because topos_analysis::check currently panics 
+        // due to tree-sitter-topos being unimplemented.
+        let result = std::panic::catch_unwind(|| {
+            topos_analysis::check(text)
+        });
+
+        let diagnostics = match result {
+            Ok(analysis_diagnostics) => {
+                analysis_diagnostics.into_iter().map(|d| {
+                    Diagnostic {
+                        range: Range {
+                            start: Position::new(d.line, d.column),
+                            end: Position::new(d.line, d.column + 1),
+                        },
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        message: d.message,
+                        ..Diagnostic::default()
+                    }
+                }).collect()
+            },
+            Err(_) => {
+                // If it panics, we just report no diagnostics for now
+                vec![]
+            }
+        };
+
+        self.client.publish_diagnostics(uri, diagnostics, None).await;
+    }
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for ToposServer {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
@@ -32,6 +64,16 @@ impl LanguageServer for ToposServer {
 
     async fn shutdown(&self) -> Result<()> {
         Ok(())
+    }
+
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        self.validate_text(params.text_document.uri, &params.text_document.text).await;
+    }
+
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+        if let Some(change) = params.content_changes.first() {
+            self.validate_text(params.text_document.uri, &change.text).await;
+        }
     }
 }
 
