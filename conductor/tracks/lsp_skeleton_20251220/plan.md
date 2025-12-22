@@ -11,8 +11,8 @@
 - [x] Task: Implement stdio transport in `topos-cli` to launch the LSP server c3339d3
 - [x] Task: Conductor - User Manual Verification 'Phase 2: LSP Server Skeleton' (Protocol in workflow.md) cc8041f
 
-## Phase 3: Basic Syntax Integration
+## Phase 3: Basic Syntax Integration [checkpoint: 2d48b1c]
 - [x] Task: Integrate `tree-sitter-topos` into `topos-analysis` 674b6da
 - [x] Task: Implement a basic "check" function that uses tree-sitter to find syntax errors b811e67
 - [x] Task: Connect the check function to LSP diagnostics 0e6ecc9
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Basic Syntax Integration' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Basic Syntax Integration' (Protocol in workflow.md) 2d48b1c
