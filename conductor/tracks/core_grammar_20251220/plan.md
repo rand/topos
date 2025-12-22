@@ -2,7 +2,7 @@
 
 ## Phase 1: Grammar Definition
 - [x] Task: Define basic Topos grammar in `tree-sitter-topos/grammar.js` c6ff3b8
-- [ ] Task: Implement corpus tests for top-level sections
+- [x] Task: Implement corpus tests for top-level sections a1c3e82
 - [ ] Task: Implement grammar for Requirements and Concepts
 - [ ] Task: Implement grammar for Tasks and Typed Holes
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Grammar Definition' (Protocol in workflow.md)
