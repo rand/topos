@@ -1,1 +1,1 @@
-/Users/rand/src/topos/target/debug/libtopos_analysis.rlib: /Users/rand/src/topos/crates/topos-analysis/src/lib.rs /Users/rand/src/topos/crates/topos-syntax/src/lib.rs
+/Users/rand/src/topos/target/debug/libtopos_analysis.rlib: /Users/rand/src/topos/crates/topos-analysis/src/lib.rs /Users/rand/src/topos/crates/topos-syntax/src/lib.rs /Users/rand/src/topos/tree-sitter-topos/bindings/rust/lib.rs
