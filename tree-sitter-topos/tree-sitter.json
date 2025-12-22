@@ -1,0 +1,24 @@
+{
+  "grammars": [
+    {
+      "name": "topos",
+      "camelcase": "Topos",
+      "scope": "source.topos",
+      "file-types": [
+        "tps",
+        "topos"
+      ],
+      "injection-regex": "^topos$"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Tree-sitter grammar for Topos",
+    "authors": [
+      {
+        "name": "Topos Contributors"
+      }
+    ]
+  }
+}
