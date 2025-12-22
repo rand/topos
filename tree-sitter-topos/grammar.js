@@ -21,13 +21,14 @@ module.exports = grammar({
       $.prose
     ),
 
-    spec_def: $ => seq('spec', $.identifier),
+    spec_def: $ => seq(token(prec(10, 'spec')), $.identifier),
 
     import_def: $ => seq(
-      'import',
-      optional(seq('from', $.string)),
-      ':',
-      choice('*', $.import_list)
+      token(prec(10, 'import')),
+      choice(
+        seq(optional(seq('from', $.string)), ':', choice('*', $.import_list)),
+        seq($.string, 'as', $.identifier)
+      )
     ),
 
     import_list: $ => seq(
@@ -73,29 +74,31 @@ module.exports = grammar({
     req_id: $ => /REQ-[A-Z0-9-]+/,
 
     ears_clause: $ => seq(
-      'when:', $.text_line,
-      'the system shall:', $.text_line
+      token(prec(10, 'when:')),
+      $.text_line,
+      token(prec(10, 'the system shall:')),
+      $.text_line
     ),
 
     acceptance: $ => seq(
-      'acceptance:',
+      token(prec(10, 'acceptance:')),
       repeat1($.acc_clause)
     ),
 
     acc_clause: $ => seq(
-      choice('given:', 'when:', 'then:'),
+      choice(token(prec(10, 'given:')), token(prec(10, 'when:')), token(prec(10, 'then:'))),
       $.text_line
     ),
 
     concept: $ => seq(
-      'Concept',
+      token(prec(10, 'Concept')),
       $.identifier,
       ':',
       repeat1($.field)
     ),
 
     field: $ => seq(
-      'field',
+      token(prec(10, 'field')),
       $.identifier,
       optional(seq('(', $.type_expr, ')')),
       optional(seq(':', repeat1($.constraint)))
@@ -122,13 +125,18 @@ module.exports = grammar({
     ),
 
     behavior: $ => seq(
-      'Behavior', $.identifier, ':',
+      token(prec(10, 'Behavior')),
+      $.identifier,
+      ':',
       optional($.implements_clause),
       repeat1($.behavior_rule)
     ),
 
     implements_clause: $ => seq(
-      'Implements', $.req_id, repeat(seq(',', $.req_id)), '.'
+      'Implements',
+      $.req_id,
+      repeat(seq(',', $.req_id)),
+      '.'
     ),
 
     behavior_rule: $ => choice(
@@ -140,13 +148,19 @@ module.exports = grammar({
     ),
 
     invariant: $ => seq(
-      'Invariant', $.identifier, ':',
+      token(prec(10, 'Invariant')),
+      $.identifier,
+      ':',
       optional($.quantifier),
       $.text_line
     ),
 
     quantifier: $ => seq(
-      'for each', $.identifier, 'in', $.reference, ':'
+      'for each',
+      $.identifier,
+      'in',
+      $.reference,
+      ':'
     ),
 
     task: $ => seq(
@@ -166,12 +180,17 @@ module.exports = grammar({
     ),
 
     aesthetic: $ => seq(
-      'Aesthetic', $.identifier, ':',
+      token(prec(10, 'Aesthetic')),
+      $.identifier,
+      ':',
       repeat1($.aesthetic_field)
     ),
 
     aesthetic_field: $ => seq(
-      $.identifier, ':', optional('[~]'), $.text_line
+      $.identifier,
+      ':',
+      optional('[~]') ,
+      $.text_line
     ),
 
     foreign_block: $ => seq(
@@ -181,7 +200,7 @@ module.exports = grammar({
       '```'
     ),
 
-    prose: $ => /[^\n#]+/,
+    prose: $ => prec(-1, /[^\s#\n][^\n#]*/),
 
     text_line: $ => /[^\n]+/, 
 
@@ -189,7 +208,7 @@ module.exports = grammar({
 
     reference: $ => seq('`', alias(/[^`]+/, $.identifier), '`'),
 
-    string: $ => /"[^ vital ]*"/,
+    string: $ => /"[^"]*"/,
 
     number: $ => /\d+/,
 

@@ -229,6 +229,10 @@
       "required": false,
       "types": [
         {
+          "type": "identifier",
+          "named": true
+        },
+        {
           "type": "import_list",
           "named": true
         },
@@ -295,6 +299,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "prose",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "quantifier",
@@ -687,10 +696,6 @@
   {
     "type": "one",
     "named": false
-  },
-  {
-    "type": "prose",
-    "named": true
   },
   {
     "type": "req_id",

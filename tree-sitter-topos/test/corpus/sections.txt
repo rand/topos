@@ -1,0 +1,42 @@
+==================
+Spec Declaration
+==================
+
+spec MyProject
+
+---
+
+(source_file
+  (spec_def
+    (identifier)))
+
+==================
+Imports
+==================
+
+import from "./file.tps": `Type1`, `Type2` import "./mod.tps" as mod
+
+---
+
+(source_file
+  (import_def
+    (string)
+    (import_list
+      (import_item
+        (reference
+          (identifier)))))
+  (prose))
+
+==================
+Sections and Headers
+==================
+
+# Principles
+- Rule 1
+
+---
+
+(source_file
+  (section
+    (header))
+  (prose))
