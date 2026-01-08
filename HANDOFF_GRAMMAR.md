@@ -4,29 +4,38 @@
 This document describes the state of the "Core Grammar and Validation" track for the Topos project. The goal is to implement a Tree-sitter grammar for the Topos language and a CLI command `topos check` to validate files.
 
 ## Current Status
-- **Phase 1 (Grammar Definition):**
-  - Implemented `grammar.js` with rules for `spec`, `import`, `requirement`, `concept`, `task`, `behavior`, `invariant`, `aesthetic`, `hole`.
-  - Implemented `scanner.c` to handle Python-style indentation (`INDENT`, `DEDENT`), line-based parsing (`NEWLINE`), and context-sensitive `PROSE` tokens (to distinguish keywords from free text).
-  - Corpus tests created in `tree-sitter-topos/test/corpus/`.
-  - **Issues:** 
-    - `Requirements Simple` and `Tasks and Holes` corpus tests are failing.
-    - The failure is due to a conflict between the `prose` token (which matches `[^
-]+`) and structured lines starting with keywords (e.g., `when:`, `file:`). The scanner attempts to backtrack but the parser precedence logic is not resolving the choice correctly, leading to `(ERROR)` nodes or `(prose)` being matched where a keyword-led rule was expected.
-    - `tree-sitter parse debug.tps` shows `(ERROR)` nodes around these constructs.
+- **Phase 1 (Grammar Definition): COMPLETE**
+  - All 5 corpus tests passing
+  - Implemented rules: `spec`, `import`, `requirement`, `concept`, `task`, `behavior`, `invariant`, `aesthetic`, `hole`
+  - Scanner handles: `INDENT`/`DEDENT`, `NEWLINE`, context-sensitive `PROSE`
+  - Key fixes applied:
+    - Changed `header` to only match single `#` (not `##`) to avoid conflict with requirements/tasks
+    - Added `prec(1, ...)` to requirement/task repeat blocks to prefer structured clauses over section-level prose
+    - Scanner stops prose at `[` to allow `task_ref_list` parsing
+    - Added `hole` and `hole_content` rules for typed holes
+
+- **Phase 2 (Analysis Integration): COMPLETE**
+  - `topos-analysis` crate wired up to `tree-sitter-topos`
+  - `check()` function extracts ERROR nodes as diagnostics
+  - 5 tests passing
+
+- **Phase 3 (CLI): COMPLETE**
+  - `topos check <file>` validates Topos files
+  - Reports diagnostics with file:line:col format
+  - Exit code 0 on success, 1 on errors
+
+- **Phase 4 (LSP Real Diagnostics): COMPLETE**
+  - Removed panic catch_unwind workaround
+  - LSP now uses topos_analysis::check() directly
+  - Proper severity mapping (Error/Warning/Info)
 
 ## Next Steps
-1. **Fix Grammar/Scanner Interaction:**
-   - The scanner needs to be more robust in identifying when *not* to consume a line as prose. Currently, it peeks for keywords, but maybe the parser needs to guide it more (though Tree-sitter scanners are context-agnostic unless using valid_symbols).
-   - Consider simplifying `prose` to just be "rest of line" and handle keywords purely in `grammar.js` if possible, OR refine the `is_keyword` logic in `scanner.c` to be exhaustive and accurate.
-   - Investigate why `repeat(choice(...))` in `requirement` rule exits early or mismatches.
 
-2. **Complete Phase 2 (Analysis):**
-   - Once grammar parses correctly, implement `topos-analysis` crate.
-   - Use `tree-sitter` Rust bindings to traverse the AST.
-   - Extract diagnostics (e.g., missing fields, invalid IDs).
-
-3. **Complete Phase 3 (CLI):**
-   - Implement `topos check` command.
+1. **Future Enhancements:**
+   - Add traceability checks (Task → Requirement references)
+   - Implement `topos format` command
+   - Add `topos trace` for dependency visualization
+   - Add go-to-definition and hover support to LSP
 
 ## Repository State
 - **Repo:** `topos` (local)

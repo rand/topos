@@ -16,6 +16,8 @@ clap.workspace = true
 tokio.workspace = true
 topos-lsp = { path = "../topos-lsp" }
 topos-mcp = { path = "../topos-mcp" }
+topos-analysis = { path = "../topos-analysis" }
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+colored.workspace = true

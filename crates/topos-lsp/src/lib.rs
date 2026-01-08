@@ -1,39 +1,37 @@
+//! Topos Language Server Protocol implementation.
+
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
+/// The Topos LSP server.
 #[derive(Debug)]
 pub struct ToposServer {
     pub client: Client,
 }
 
 impl ToposServer {
+    /// Validate document text and publish diagnostics.
     async fn validate_text(&self, uri: Url, text: &str) {
-        // We use catch_unwind because topos_analysis::check currently panics 
-        // due to tree-sitter-topos being unimplemented.
-        let result = std::panic::catch_unwind(|| {
-            topos_analysis::check(text)
-        });
+        let analysis_diagnostics = topos_analysis::check(text);
 
-        let diagnostics = match result {
-            Ok(analysis_diagnostics) => {
-                analysis_diagnostics.into_iter().map(|d| {
-                    Diagnostic {
-                        range: Range {
-                            start: Position::new(d.line, d.column),
-                            end: Position::new(d.line, d.column + 1),
-                        },
-                        severity: Some(DiagnosticSeverity::ERROR),
-                        message: d.message,
-                        ..Diagnostic::default()
-                    }
-                }).collect()
-            },
-            Err(_) => {
-                // If it panics, we just report no diagnostics for now
-                vec![]
-            }
-        };
+        let diagnostics: Vec<Diagnostic> = analysis_diagnostics
+            .into_iter()
+            .map(|d| Diagnostic {
+                range: Range {
+                    start: Position::new(d.line, d.column),
+                    end: Position::new(d.end_line, d.end_column),
+                },
+                severity: Some(match d.severity {
+                    topos_analysis::Severity::Error => DiagnosticSeverity::ERROR,
+                    topos_analysis::Severity::Warning => DiagnosticSeverity::WARNING,
+                    topos_analysis::Severity::Info => DiagnosticSeverity::INFORMATION,
+                }),
+                source: Some("topos".to_string()),
+                message: d.message,
+                ..Diagnostic::default()
+            })
+            .collect();
 
         self.client.publish_diagnostics(uri, diagnostics, None).await;
     }

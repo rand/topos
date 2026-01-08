@@ -18,21 +18,18 @@ Concept Hole:
 (source_file
   (section
     (header
-      (line_content))
+      (prose))
     (task
       (identifier)
-      (line_content)
+      (prose)
       (task_ref_list
         (identifier))
       (task_field
-        (prose
-          (line_content)))
+        (prose))
       (task_field
-        (prose
-          (line_content)))
+        (prose))
       (task_field
-        (prose
-          (line_content))))
+        (prose)))
     (concept
       (identifier)
       (field
@@ -43,5 +40,4 @@ Concept Hole:
         (identifier)
         (type_expr
           (hole
-            (prose
-              (line_content))))))))
+            (hole_content)))))))
