@@ -23,6 +23,10 @@ pub struct Symbol {
     pub title: Option<String>,
     /// Status (for tasks: pending, in_progress, done).
     pub status: Option<String>,
+    /// File path (for tasks).
+    pub file: Option<String>,
+    /// Tests path (for tasks).
+    pub tests: Option<String>,
     /// Source location where the symbol is defined.
     pub span: Span,
 }
@@ -162,16 +166,30 @@ fn add_requirement(req: &Requirement, table: &mut SymbolTable) {
         kind: SymbolKind::Requirement,
         title: Some(req.title.text.trim().to_string()),
         status: None,
+        file: None,
+        tests: None,
         span: req.span,
     });
 }
 
 fn add_task(task: &Task, table: &mut SymbolTable) {
-    // Extract status from task fields
+    // Extract fields from task
     let status = task
         .fields
         .iter()
         .find(|f| matches!(f.kind, topos_syntax::TaskFieldKind::Status))
+        .map(|f| f.value.text.trim().to_string());
+
+    let file = task
+        .fields
+        .iter()
+        .find(|f| matches!(f.kind, topos_syntax::TaskFieldKind::File))
+        .map(|f| f.value.text.trim().to_string());
+
+    let tests = task
+        .fields
+        .iter()
+        .find(|f| matches!(f.kind, topos_syntax::TaskFieldKind::Tests))
         .map(|f| f.value.text.trim().to_string());
 
     table.add(Symbol {
@@ -179,6 +197,8 @@ fn add_task(task: &Task, table: &mut SymbolTable) {
         kind: SymbolKind::Task,
         title: Some(task.title.text.trim().to_string()),
         status,
+        file,
+        tests,
         span: task.span,
     });
 }
@@ -189,6 +209,8 @@ fn add_concept(concept: &Concept, table: &mut SymbolTable) {
         kind: SymbolKind::Concept,
         title: None,
         status: None,
+        file: None,
+        tests: None,
         span: concept.span,
     });
 
@@ -199,6 +221,8 @@ fn add_concept(concept: &Concept, table: &mut SymbolTable) {
             kind: SymbolKind::Field,
             title: None,
             status: None,
+            file: None,
+            tests: None,
             span: field.span,
         });
     }
@@ -210,6 +234,8 @@ fn add_behavior(behavior: &Behavior, table: &mut SymbolTable) {
         kind: SymbolKind::Behavior,
         title: None,
         status: None,
+        file: None,
+        tests: None,
         span: behavior.span,
     });
 }
@@ -220,6 +246,8 @@ fn add_invariant(invariant: &Invariant, table: &mut SymbolTable) {
         kind: SymbolKind::Invariant,
         title: None,
         status: None,
+        file: None,
+        tests: None,
         span: invariant.span,
     });
 }

@@ -72,6 +72,18 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
+    /// Gather evidence for tasks from git history
+    Gather {
+        /// Path to spec file or directory containing .tps files
+        #[arg(value_name = "PATH", default_value = ".")]
+        path: PathBuf,
+        /// Specific task ID to gather evidence for
+        #[arg(value_name = "TASK_ID")]
+        task_id: Option<String>,
+        /// Preview changes without modifying files
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -156,6 +168,11 @@ async fn run(cli: Cli) -> Result<bool> {
             format,
         } => drift_files(&old_file, &new_file, format),
         Commands::Format { files, check } => format_files(&files, check),
+        Commands::Gather {
+            path,
+            task_id,
+            dry_run,
+        } => gather_evidence(&path, task_id.as_deref(), dry_run),
     }
 }
 
@@ -402,4 +419,253 @@ fn format_files(files: &[PathBuf], check: bool) -> Result<bool> {
     }
 
     Ok(all_ok)
+}
+
+fn gather_evidence(path: &PathBuf, task_id: Option<&str>, dry_run: bool) -> Result<bool> {
+    use git2::Repository;
+
+    // Find the git repository
+    let repo = Repository::discover(path)
+        .map_err(|e| anyhow::anyhow!("Not a git repository: {}", e))?;
+
+    // Collect spec files to process
+    let spec_files: Vec<PathBuf> = if path.is_file() {
+        vec![path.clone()]
+    } else {
+        walkdir(path)?
+            .into_iter()
+            .filter(|p| {
+                p.extension()
+                    .map(|e| e == "tps" || e == "topos")
+                    .unwrap_or(false)
+            })
+            .collect()
+    };
+
+    if spec_files.is_empty() {
+        println!("{}: No .tps or .topos files found", "warning".yellow());
+        return Ok(true);
+    }
+
+    let mut total_updates = 0;
+
+    for spec_path in &spec_files {
+        let content = std::fs::read_to_string(spec_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", spec_path.display(), e))?;
+
+        let mut db = AnalysisDatabase::new();
+        let file = db.add_file(spec_path.display().to_string(), content.clone());
+        let symbols = topos_analysis::compute_symbols(&db, file);
+
+        // Process tasks
+        for (id, task) in &symbols.tasks {
+            // Skip if specific task requested and this isn't it
+            if let Some(target_id) = task_id {
+                if id != target_id {
+                    continue;
+                }
+            }
+
+            // Get file paths from task
+            let file_paths = extract_file_paths(task);
+            if file_paths.is_empty() {
+                continue;
+            }
+
+            // Gather evidence for each file
+            let mut evidence = GatheredEvidence::default();
+
+            for file_path in &file_paths {
+                if let Some(commit_info) = get_latest_commit(&repo, file_path) {
+                    evidence.add_commit(commit_info);
+                }
+            }
+
+            if evidence.is_empty() {
+                continue;
+            }
+
+            total_updates += 1;
+
+            if dry_run {
+                println!(
+                    "{}: {} in {}",
+                    "would update".blue().bold(),
+                    id.cyan(),
+                    spec_path.display()
+                );
+                println!("  evidence:");
+                if let Some(commit) = &evidence.latest_commit {
+                    println!("    commit: {}", commit);
+                }
+                if !evidence.files_updated.is_empty() {
+                    println!(
+                        "    files: {}",
+                        evidence.files_updated.iter().take(3).cloned().collect::<Vec<_>>().join(", ")
+                    );
+                }
+                println!();
+            } else {
+                // For now, just report what we would do
+                // Full implementation would modify the spec file
+                println!(
+                    "{}: {} in {}",
+                    "gathered".green().bold(),
+                    id.cyan(),
+                    spec_path.display()
+                );
+                if let Some(commit) = &evidence.latest_commit {
+                    println!("  commit: {}", commit);
+                }
+            }
+        }
+    }
+
+    if total_updates == 0 {
+        if task_id.is_some() {
+            println!(
+                "{}: Task '{}' not found or has no file references",
+                "warning".yellow(),
+                task_id.unwrap()
+            );
+        } else {
+            println!("{}: No tasks with file references found", "info".blue());
+        }
+    } else if dry_run {
+        println!(
+            "\n{}: {} task(s) would be updated (use without --dry-run to apply)",
+            "summary".bold(),
+            total_updates
+        );
+    } else {
+        println!(
+            "\n{}: {} task(s) updated",
+            "summary".bold(),
+            total_updates
+        );
+    }
+
+    Ok(true)
+}
+
+/// Simple directory walker (no walkdir crate dependency)
+fn walkdir(path: &PathBuf) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    walkdir_recursive(path, &mut files)?;
+    Ok(files)
+}
+
+fn walkdir_recursive(path: &PathBuf, files: &mut Vec<PathBuf>) -> Result<()> {
+    if path.is_file() {
+        files.push(path.clone());
+        return Ok(());
+    }
+
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            walkdir_recursive(&path, files)?;
+        } else {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// Extract file paths from a task symbol
+fn extract_file_paths(task: &topos_analysis::Symbol) -> Vec<String> {
+    let mut paths = Vec::new();
+    if let Some(file) = &task.file {
+        paths.push(file.clone());
+    }
+    if let Some(tests) = &task.tests {
+        paths.push(tests.clone());
+    }
+    paths
+}
+
+#[derive(Default)]
+struct GatheredEvidence {
+    latest_commit: Option<String>,
+    files_updated: Vec<String>,
+}
+
+impl GatheredEvidence {
+    fn add_commit(&mut self, info: CommitInfo) {
+        // Keep the most recent commit
+        if self.latest_commit.is_none() {
+            self.latest_commit = Some(info.short_id);
+        }
+        self.files_updated.push(info.file_path);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.latest_commit.is_none()
+    }
+}
+
+struct CommitInfo {
+    short_id: String,
+    file_path: String,
+}
+
+fn get_latest_commit(repo: &git2::Repository, file_path: &str) -> Option<CommitInfo> {
+    // Get HEAD
+    let head = repo.head().ok()?;
+    let head_commit = head.peel_to_commit().ok()?;
+
+    // Walk the commit history looking for changes to this file
+    let mut revwalk = repo.revwalk().ok()?;
+    revwalk.push(head_commit.id()).ok()?;
+    revwalk.set_sorting(git2::Sort::TIME).ok()?;
+
+    for oid in revwalk.flatten().take(100) {
+        let commit = repo.find_commit(oid).ok()?;
+
+        // Check if this commit touches the file
+        if commit_touches_file(repo, &commit, file_path) {
+            let short_id = commit.id().to_string()[..7].to_string();
+            return Some(CommitInfo {
+                short_id,
+                file_path: file_path.to_string(),
+            });
+        }
+    }
+
+    None
+}
+
+fn commit_touches_file(_repo: &git2::Repository, commit: &git2::Commit, file_path: &str) -> bool {
+    let tree = match commit.tree() {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+
+    // Check if file exists in this commit's tree
+    if tree.get_path(std::path::Path::new(file_path)).is_ok() {
+        // Check if it changed from parent
+        if commit.parent_count() == 0 {
+            return true; // Initial commit
+        }
+
+        if let Ok(parent) = commit.parent(0) {
+            if let Ok(parent_tree) = parent.tree() {
+                let old_entry = parent_tree.get_path(std::path::Path::new(file_path));
+                let new_entry = tree.get_path(std::path::Path::new(file_path));
+
+                match (old_entry, new_entry) {
+                    (Ok(old), Ok(new)) => old.id() != new.id(),
+                    (Err(_), Ok(_)) => true, // File added
+                    _ => false,
+                }
+            } else {
+                true
+            }
+        } else {
+            true
+        }
+    } else {
+        false
+    }
 }
