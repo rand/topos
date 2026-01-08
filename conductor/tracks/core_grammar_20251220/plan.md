@@ -7,7 +7,7 @@
 - [x] Task: Debug and fix grammar conflicts and scanner logic for complex blocks d49ee53
 - [x] Task: Fix `ears_clause` matching in Requirements grammar d49ee53
 - [x] Task: Implement grammar for Tasks and Typed Holes ddd9cb9
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Grammar Definition' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Grammar Definition' (Protocol in workflow.md) [checkpoint: f4f3d24]
 
 ## Phase 2: Parser and Analysis Integration
 - [ ] Task: Generate parser and verify linkage in `topos-analysis`
