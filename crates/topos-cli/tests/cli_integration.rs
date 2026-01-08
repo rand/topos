@@ -13,6 +13,7 @@ use std::fs;
 use tempfile::TempDir;
 
 /// Get a command for the topos binary.
+#[allow(deprecated)]
 fn topos() -> Command {
     Command::cargo_bin("topos").unwrap()
 }
@@ -270,7 +271,7 @@ fn test_format_check_mode() {
         .arg("--check")
         .arg(&spec_path)
         .assert()
-        .stdout(predicate::str::contains(&spec_path.to_string_lossy().to_string()).or(
+        .stdout(predicate::str::contains(spec_path.to_string_lossy().to_string()).or(
             predicate::str::contains("reformatted").or(predicate::str::contains("✓"))
         ));
 }
