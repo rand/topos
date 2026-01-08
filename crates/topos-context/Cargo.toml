@@ -9,3 +9,6 @@ description = "AI context generation for Topos"
 
 [dependencies]
 topos-analysis = { path = "../topos-analysis" }
+topos-syntax = { path = "../topos-syntax" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

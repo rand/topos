@@ -11,4 +11,7 @@ description = "LSP server for Topos"
 tower-lsp.workspace = true
 tokio.workspace = true
 topos-analysis = { path = "../topos-analysis" }
+topos-syntax = { path = "../topos-syntax" }
 lsp-types.workspace = true
+dashmap = "6.0"
+parking_lot = "0.12"

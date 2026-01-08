@@ -9,4 +9,11 @@ description = "Core syntax and AST for Topos"
 
 [dependencies]
 tree-sitter.workspace = true
+tree-sitter-topos.workspace = true
+facet.workspace = true
 facet-core.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+proptest.workspace = true

@@ -86,6 +86,8 @@ ratatui = "0.29"                  # TUI library
 # ============================================================================
 insta = { version = "1.40", features = ["json", "yaml"] }  # Snapshot testing
 proptest = "1.5"                  # Property-based testing
+assert_cmd = "2.0"                # CLI testing
+predicates = "3.1"                # Test assertions
 
 # ============================================================================
 # UTILITIES

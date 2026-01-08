@@ -14,3 +14,6 @@ facet-core.workspace = true
 tree-sitter-topos = { path = "../../tree-sitter-topos" }
 tree-sitter.workspace = true
 
+[dev-dependencies]
+proptest.workspace = true
+
