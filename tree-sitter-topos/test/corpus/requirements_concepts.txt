@@ -1,47 +1,13 @@
 ==================
-Requirements
+Requirements Simple
 ==================
 
 # Requirements
 
-## REQ-1: Task Creation
-As a user...
-when: user submits form
-the system shall: create task
-
-acceptance:
-  given: user is logged in
-  when: user submits
-  then: task created
-
----
-
-(source_file
-  (section
-    (header)
-    (prose)
-    (requirement
-      (identifier)
-      (ears_clause
-        (text_line)
-        (text_line))
-      (acceptance
-        (acc_clause
-          (text_line))
-        (acc_clause
-          (text_line))
-        (acc_clause
-          (text_line))))))
-
-==================
-Concepts
-==================
-
-# Concepts
-
-Concept Task:
-  field id (`Identifier`): unique
-  field status (`Status`): default: `todo`
+## REQ-1: Title
+Description here
+when: action
+the system shall: behavior
 
 ---
 
@@ -49,18 +15,10 @@ Concept Task:
   (section
     (header
       (prose))
-    (concept
+    (requirement
       (identifier)
-      (field
-        (identifier)
-        (type_expr
-          (reference
-            (identifier)))
-        (constraint))
-      (field
-        (identifier)
-        (type_expr
-          (reference
-            (identifier)))
-        (constraint
-          (prose))))))
+      (prose)
+      (prose)
+      (ears_clause
+        (prose)
+        (prose)))))

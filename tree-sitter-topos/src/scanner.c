@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 enum TokenType {
   INDENT,
@@ -69,10 +70,15 @@ static bool is_keyword(const char *word) {
     if (strcmp(word, "Invariant") == 0) return true;
     if (strcmp(word, "Aesthetic") == 0) return true;
     if (strcmp(word, "field") == 0) return true;
+    if (strcmp(word, "default:") == 0) return true;
+    if (strcmp(word, "derived:") == 0) return true;
+    if (strcmp(word, "invariant:") == 0) return true;
     if (strcmp(word, "spec") == 0) return true;
     if (strcmp(word, "import") == 0) return true;
     if (strcmp(word, "from") == 0) return true;
-    if (strcmp(word, "the") == 0) return true; // the system shall:
+    if (strcmp(word, "the") == 0) return true; 
+    if (strcmp(word, "system") == 0) return true; 
+    if (strcmp(word, "shall:") == 0) return true; 
     if (strcmp(word, "Implements") == 0) return true;
     if (strcmp(word, "file:") == 0) return true;
     if (strcmp(word, "tests:") == 0) return true;
@@ -103,6 +109,11 @@ bool tree_sitter_topos_external_scanner_scan(void *payload, TSLexer *lexer, cons
   if (valid_symbols[PROSE] && lexer->lookahead != 10 && lexer->lookahead != 0) {
     char word[64] = {0};
     int i = 0;
+    
+    if (lexer->lookahead == '#' || lexer->lookahead == '`') {
+        return false; 
+    }
+
     while (lexer->lookahead != 0 && !isspace(lexer->lookahead) && i < 63) {
         word[i++] = (char)lexer->lookahead;
         advance(lexer);
@@ -113,7 +124,7 @@ bool tree_sitter_topos_external_scanner_scan(void *payload, TSLexer *lexer, cons
         return false; // Backtrack
     }
     
-    // Not a keyword, consume rest of line
+    // Not a keyword, consume the rest of the line
     while (lexer->lookahead != 10 && lexer->lookahead != 0) {
         advance(lexer);
     }
