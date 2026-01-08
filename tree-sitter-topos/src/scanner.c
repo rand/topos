@@ -76,6 +76,9 @@ static bool is_keyword(const char *word) {
     if (strcmp(word, "system") == 0) return true; 
     if (strcmp(word, "shall:") == 0) return true; 
     if (strcmp(word, "Implements") == 0) return true;
+    // REQ-* and TASK-* prefixes let parser try req_id/task_id rules
+    if (strncmp(word, "REQ-", 4) == 0) return true;
+    if (strncmp(word, "TASK-", 5) == 0) return true;
     if (strcmp(word, "file:") == 0) return true;
     if (strcmp(word, "tests:") == 0) return true;
     if (strcmp(word, "status:") == 0) return true;
@@ -129,9 +132,15 @@ bool tree_sitter_topos_external_scanner_scan(void *payload, TSLexer *lexer, cons
         return false; // Backtrack
     }
     
-    // Not a keyword. We need to consume the REST of the line.
+    // Not a keyword. Consume the rest of the line, but stop before [REQ- or [TASK- patterns.
     // NOTE: We already consumed the first word. Continue.
     while (lexer->lookahead != 10 && lexer->lookahead != 0) {
+        // Check for task_ref_list pattern [REQ- or [TASK-
+        if (lexer->lookahead == '[') {
+            // Peek ahead to see if this is a ref list
+            // We mark end here and let the parser try task_ref_list
+            break;
+        }
         advance(lexer);
     }
     

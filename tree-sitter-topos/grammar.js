@@ -16,12 +16,8 @@ module.exports = grammar({
   conflicts: $ => [
     [$.section],
     [$.requirement],
-    [$.concept],
-    [$.behavior],
-    [$.invariant],
-    [$.aesthetic],
     [$.task],
-    [$._item, $.prose],
+    [$.subsection],
   ],
 
   rules: {
@@ -62,8 +58,9 @@ module.exports = grammar({
       repeat($._section_content)
     ),
 
+    // Only single # for section headers; ## is reserved for requirements/tasks
     header: $ => seq(
-      token(repeat1('#')),
+      '#',
       $.prose
     ),
 
@@ -75,18 +72,27 @@ module.exports = grammar({
       $.invariant,
       $.aesthetic,
       $.foreign_block,
+      $.subsection,
       $.prose,
       $._newline
     ),
 
-    requirement: $ => prec.left(seq(
+    // Subsection headers (## Title) that aren't requirements or tasks
+    subsection: $ => seq(
+      '##',
+      $.prose,
+      $._newline,
+      repeat(prec(1, choice($.prose, $._newline)))
+    ),
+
+    requirement: $ => seq(
       '##',
       alias($.req_id, $.identifier),
       ':',
       $.prose,
       $._newline,
-      repeat(choice($.ears_clause, $.acceptance, $.prose, $._newline))
-    )),
+      repeat(prec(1, choice($.ears_clause, $.acceptance, $.prose, $._newline)))
+    ),
 
     req_id: $ => /REQ-[A-Z0-9-]+/,
 
@@ -128,10 +134,20 @@ module.exports = grammar({
 
     type_expr: $ => choice(
       $.reference,
+      $.hole,
       seq('List', 'of', $.reference),
-      seq('Optional', $.reference),
+      seq('Optional', $.reference),                      // Optional `Type`
+      seq($.reference, $.reference),                     // `Optional` `Type` (backtick form)
       seq('one', 'of:', $.variant_list)
     ),
+
+    hole: $ => seq(
+      '[?',
+      optional($.hole_content),
+      ']'
+    ),
+
+    hole_content: $ => /[^\]]+/,
 
     variant_list: $ => seq(
       $.identifier,
@@ -143,7 +159,7 @@ module.exports = grammar({
       seq('default:', $.prose),
       seq('derived:', $.prose),
       seq('invariant:', $.prose),
-      seq('at least', $.number)
+      seq('at least', $.number, optional($.identifier))  // "at least 1 character"
     ),
 
     behavior: $ => seq(
@@ -192,20 +208,18 @@ module.exports = grammar({
       alias($.task_id, $.identifier),
       ':',
       $.prose,
+      optional($.task_ref_list),  // [REQ-1, REQ-2] on same line
       $._newline,
-      $._indent,
-      repeat1(choice(
-        $.task_ref_list,
+      repeat(prec(1, choice(
         $.task_field,
         $.prose,
         $._newline
-      )),
-      $._dedent
+      )))
     ),
 
     task_id: $ => /TASK-[A-Z0-9-]+/,
 
-    task_ref_list: $ => seq('[', $.req_id, repeat(seq(',', $.req_id)), ']', $._newline),
+    task_ref_list: $ => seq('[', alias($.req_id, $.identifier), repeat(seq(',', alias($.req_id, $.identifier))), ']'),
 
     task_field: $ => seq(
       choice('file:', 'tests:', 'depends:', 'status:', 'evidence:', 'context:'),
