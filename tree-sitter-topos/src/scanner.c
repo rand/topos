@@ -105,51 +105,8 @@ bool tree_sitter_topos_external_scanner_scan(void *payload, TSLexer *lexer, cons
     return true;
   }
 
-  // 2. Prose (peek first word)
-  if (valid_symbols[PROSE] && lexer->lookahead != 10 && lexer->lookahead != 0) {
-    char word[64] = {0};
-    int i = 0;
-    
-    // Check for special punctuation
-    if (lexer->lookahead == '#' || lexer->lookahead == '`') {
-        // We don't advance, we just return false
-        return false; 
-    }
-
-    // Read word for keyword check
-    // We need to 'peek' without consuming if we fail.
-    // Tree-sitter resets state if we return false. So we can advance safely as long as we return false.
-    
-    int32_t current = lexer->lookahead;
-    while (current != 0 && !isspace(current) && i < 63) {
-        word[i++] = (char)current;
-        advance(lexer);
-        current = lexer->lookahead;
-    }
-    word[i] = '\0';
-    
-    if (is_keyword(word)) {
-        return false; // Backtrack
-    }
-    
-    // Not a keyword. Consume the rest of the line, but stop before [REQ- or [TASK- patterns.
-    // NOTE: We already consumed the first word. Continue.
-    while (lexer->lookahead != 10 && lexer->lookahead != 0) {
-        // Check for task_ref_list pattern [REQ- or [TASK-
-        if (lexer->lookahead == '[') {
-            // Peek ahead to see if this is a ref list
-            // We mark end here and let the parser try task_ref_list
-            break;
-        }
-        advance(lexer);
-    }
-    
-    lexer->mark_end(lexer); // MARK
-    lexer->result_symbol = PROSE;
-    return true;
-  }
-
-  // 3. Indent/Dedent
+  // 2. Check Indent/Dedent BEFORE prose to handle block boundaries correctly.
+  //    This must happen before we advance through any characters.
   if (valid_symbols[INDENT] || valid_symbols[DEDENT]) {
     uint16_t current_indent = lexer->get_column(lexer);
 
@@ -164,6 +121,50 @@ bool tree_sitter_topos_external_scanner_scan(void *payload, TSLexer *lexer, cons
       lexer->result_symbol = DEDENT;
       return true;
     }
+  }
+
+  // 3. Prose (peek first word)
+  if (valid_symbols[PROSE] && lexer->lookahead != 10 && lexer->lookahead != 0) {
+    char word[64] = {0};
+    int i = 0;
+
+    // Check for special punctuation
+    if (lexer->lookahead == '#' || lexer->lookahead == '`') {
+        // We don't advance, we just return false
+        return false;
+    }
+
+    // Read word for keyword check
+    // We need to 'peek' without consuming if we fail.
+    // Tree-sitter resets state if we return false. So we can advance safely as long as we return false.
+
+    int32_t current = lexer->lookahead;
+    while (current != 0 && !isspace(current) && i < 63) {
+        word[i++] = (char)current;
+        advance(lexer);
+        current = lexer->lookahead;
+    }
+    word[i] = '\0';
+
+    if (is_keyword(word)) {
+        return false; // Backtrack
+    }
+
+    // Not a keyword. Consume the rest of the line, but stop before [REQ- or [TASK- patterns.
+    // NOTE: We already consumed the first word. Continue.
+    while (lexer->lookahead != 10 && lexer->lookahead != 0) {
+        // Check for task_ref_list pattern [REQ- or [TASK-
+        if (lexer->lookahead == '[') {
+            // Peek ahead to see if this is a ref list
+            // We mark end here and let the parser try task_ref_list
+            break;
+        }
+        advance(lexer);
+    }
+
+    lexer->mark_end(lexer); // MARK
+    lexer->result_symbol = PROSE;
+    return true;
   }
 
   return false;

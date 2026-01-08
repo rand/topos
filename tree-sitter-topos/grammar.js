@@ -119,9 +119,11 @@ module.exports = grammar({
       $.identifier,
       ':',
       $._newline,
-      $._indent,
-      repeat1(choice($.field, $.prose, $._newline)),
-      $._dedent
+      optional(seq(
+        $._indent,
+        repeat1(choice($.field, $.prose, $._newline)),
+        $._dedent
+      ))
     ),
 
     field: $ => seq(
