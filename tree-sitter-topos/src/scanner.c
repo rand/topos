@@ -1,95 +1,141 @@
 #include <tree_sitter/parser.h>
 #include <ctype.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum TokenType {
+  INDENT,
+  DEDENT,
+  NEWLINE,
   PROSE,
 };
 
+typedef struct {
+  uint16_t indents[64];
+  uint8_t count;
+} Scanner;
+
 void *tree_sitter_topos_external_scanner_create() {
-  return NULL;
+  Scanner *scanner = (Scanner *)calloc(1, sizeof(Scanner));
+  scanner->indents[0] = 0;
+  scanner->count = 1;
+  return scanner;
 }
 
-void tree_sitter_topos_external_scanner_destroy(void *payload) {}
+void tree_sitter_topos_external_scanner_destroy(void *payload) {
+  free(payload);
+}
 
 unsigned tree_sitter_topos_external_scanner_serialize(void *payload, char *buffer) {
-  return 0;
+  Scanner *scanner = (Scanner *)payload;
+  unsigned size = 0;
+  for (unsigned i = 0; i < scanner->count && size < 64; i++) {
+    buffer[size++] = (char)scanner->indents[i];
+  }
+  return size;
 }
 
-void tree_sitter_topos_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {}
+void tree_sitter_topos_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
+  Scanner *scanner = (Scanner *)payload;
+  scanner->count = 0;
+  if (length > 0) {
+    for (unsigned i = 0; i < length && i < 64; i++) {
+      scanner->indents[scanner->count++] = (uint16_t)buffer[i];
+    }
+  } else {
+    scanner->indents[scanner->count++] = 0;
+  }
+}
+
+static void skip(TSLexer *lexer) {
+  lexer->advance(lexer, true);
+}
+
+static void advance(TSLexer *lexer) {
+  lexer->advance(lexer, false);
+}
 
 static bool is_keyword(const char *word) {
-    const char *keywords[] = {
-        "spec", "import", "Concept", "Behavior", "Invariant", "Aesthetic", "field",
-        "when:", "given:", "then:", "requires:", "ensures:", "acceptance:",
-        "the", // for "the system shall:"
-        "Implements", "file:", "tests:", "depends:", "status:", "evidence:", "context:",
-        "##",
-        NULL
-    };
-
-    for (int i = 0; keywords[i]; i++) {
-        if (strcmp(word, keywords[i]) == 0) {
-            return true;
-        }
-        // Handle "the system shall:" prefix check if needed, but "the" covers it for first word
-        // Handle "##"
-        if (strcmp(keywords[i], "##") == 0 && strncmp(word, "##", 2) == 0) return true;
-    }
+    if (strcmp(word, "when:") == 0) return true;
+    if (strcmp(word, "given:") == 0) return true;
+    if (strcmp(word, "then:") == 0) return true;
+    if (strcmp(word, "acceptance:") == 0) return true;
+    if (strcmp(word, "returns:") == 0) return true;
+    if (strcmp(word, "requires:") == 0) return true;
+    if (strcmp(word, "ensures:") == 0) return true;
+    if (strcmp(word, "Concept") == 0) return true;
+    if (strcmp(word, "Behavior") == 0) return true;
+    if (strcmp(word, "Invariant") == 0) return true;
+    if (strcmp(word, "Aesthetic") == 0) return true;
+    if (strcmp(word, "field") == 0) return true;
+    if (strcmp(word, "spec") == 0) return true;
+    if (strcmp(word, "import") == 0) return true;
+    if (strcmp(word, "from") == 0) return true;
+    if (strcmp(word, "the") == 0) return true; // the system shall:
+    if (strcmp(word, "Implements") == 0) return true;
+    if (strcmp(word, "file:") == 0) return true;
+    if (strcmp(word, "tests:") == 0) return true;
+    if (strcmp(word, "status:") == 0) return true;
+    if (strcmp(word, "evidence:") == 0) return true;
+    if (strcmp(word, "context:") == 0) return true;
+    if (strncmp(word, "##", 2) == 0) return true;
+    if (word[0] == '#') return true;
     return false;
 }
 
 bool tree_sitter_topos_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
-  if (valid_symbols[PROSE]) {
-    // Skip whitespace
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-      lexer->advance(lexer, true);
-    }
+  Scanner *scanner = (Scanner *)payload;
 
-    if (lexer->lookahead == '\n' || lexer->lookahead == '\r' || lexer->lookahead == 0) {
-      return false; // Empty line is not prose, let regular parser handle newline/whitespace
-    }
+  // Horizontal whitespace skip
+  while (lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13) {
+    skip(lexer);
+  }
 
-    // Read first word to check if it is a keyword
-    char first_word[64] = {0};
+  // 1. Newline
+  if (valid_symbols[NEWLINE] && lexer->lookahead == 10) {
+    advance(lexer);
+    lexer->result_symbol = NEWLINE;
+    return true;
+  }
+
+  // 2. Prose (peek first word)
+  if (valid_symbols[PROSE] && lexer->lookahead != 10 && lexer->lookahead != 0) {
+    char word[64] = {0};
     int i = 0;
-    
-    lexer->mark_end(lexer); // Mark start of prose
-
-    // Peek ahead to check keyword
-    // We cannot consume yet if we want to reject.
-    // Actually, if we reject, we just return false and consume nothing?
-    // But scanner must consume token if it returns true.
-    
-    // We need to implement: If matches keyword -> return false.
-    // If not keyword -> consume line -> return true.
-
-    // Peek first word
-    int32_t current = lexer->lookahead;
-    while (current != 0 && !isspace(current) && i < 63) {
-        first_word[i++] = (char)current;
-        lexer->advance(lexer, false);
-        current = lexer->lookahead;
+    while (lexer->lookahead != 0 && !isspace(lexer->lookahead) && i < 63) {
+        word[i++] = (char)lexer->lookahead;
+        advance(lexer);
     }
-    first_word[i] = '\0';
-
-    if (is_keyword(first_word)) {
-        // It's a keyword, so we should NOT match PROSE.
-        // We scanned some chars, but we return false, so they are not consumed?
-        // Wait, TSLexer state is mutable.
-        // We assume returning false resets the state? No, we must rely on not calling mark_end later?
-        // Tree-sitter resets position if scan returns false? Yes.
-        return false;
-    }
-
-    // Not a keyword. Consume the rest of the line.
-    while (lexer->lookahead != '\n' && lexer->lookahead != 0) {
-      lexer->advance(lexer, false);
+    word[i] = '\0';
+    
+    if (is_keyword(word)) {
+        return false; // Backtrack
     }
     
-    lexer->mark_end(lexer);
+    // Not a keyword, consume rest of line
+    while (lexer->lookahead != 10 && lexer->lookahead != 0) {
+        advance(lexer);
+    }
     lexer->result_symbol = PROSE;
     return true;
+  }
+
+  // 3. Indent/Dedent
+  if (valid_symbols[INDENT] || valid_symbols[DEDENT]) {
+    uint16_t current_indent = lexer->get_column(lexer);
+
+    if (valid_symbols[INDENT] && current_indent > scanner->indents[scanner->count - 1]) {
+      scanner->indents[scanner->count++] = current_indent;
+      lexer->result_symbol = INDENT;
+      return true;
+    }
+
+    if (valid_symbols[DEDENT] && current_indent < scanner->indents[scanner->count - 1]) {
+      scanner->count--;
+      lexer->result_symbol = DEDENT;
+      return true;
+    }
   }
 
   return false;

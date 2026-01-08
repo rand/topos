@@ -2,19 +2,26 @@ module.exports = grammar({
   name: 'topos',
 
   extras: $ => [
-    /\s+/,
+    /[ \t\r]+/, // Horiz whitespace only
     $.comment,
   ],
 
   externals: $ => [
+    $._indent,
+    $._dedent,
+    $._newline,
     $.prose,
   ],
 
   conflicts: $ => [
-    [$.section, $.prose],
-    [$._section_content, $.prose],
-    [$.behavior, $.prose],
-    [$.invariant, $.prose],
+    [$.section],
+    [$.requirement],
+    [$.concept],
+    [$.behavior],
+    [$.invariant],
+    [$.aesthetic],
+    [$.task],
+    [$._item, $.prose],
   ],
 
   rules: {
@@ -24,17 +31,19 @@ module.exports = grammar({
       $.spec_def,
       $.import_def,
       $.section,
-      $.prose
+      prec(-1, $.prose),
+      $._newline
     ),
 
-    spec_def: $ => seq('spec', $.identifier),
+    spec_def: $ => seq('spec', $.identifier, $._newline),
 
     import_def: $ => seq(
       'import',
       choice(
-        seq(optional(seq('from', $.string)), ':', choice('*', $.import_list)),
+        seq(optional(seq('from', $.string)), ':', $.import_list),
         seq($.string, 'as', $.identifier)
-      )
+      ),
+      $._newline
     ),
 
     import_list: $ => seq(
@@ -47,14 +56,15 @@ module.exports = grammar({
       optional(seq('as', $.identifier))
     ),
 
-    section: $ => prec.left(seq(
+    section: $ => seq(
       $.header,
+      $._newline,
       repeat($._section_content)
-    )),
+    ),
 
     header: $ => seq(
       token(repeat1('#')),
-      token.immediate(/[^\n]+/)
+      $.prose
     ),
 
     _section_content: $ => choice(
@@ -65,46 +75,55 @@ module.exports = grammar({
       $.invariant,
       $.aesthetic,
       $.foreign_block,
-      $.prose
+      $.prose,
+      $._newline
     ),
 
     requirement: $ => prec.left(seq(
       '##',
       alias($.req_id, $.identifier),
       ':',
-      token.immediate(/[^\n]+/),
-      repeat(choice($.ears_clause, $.acceptance, $.prose))
+      $.prose,
+      $._newline,
+      repeat(choice($.ears_clause, $.acceptance, $.prose, $._newline))
     )),
 
     req_id: $ => /REQ-[A-Z0-9-]+/,
 
     ears_clause: $ => seq(
-      'when:', $.text_line,
-      'the system shall:', $.text_line
+      'when:', $.prose, $._newline,
+      'the system shall:', $.prose, $._newline
     ),
 
-    acceptance: $ => prec.left(seq(
-      'acceptance:',
-      repeat1($.acc_clause)
-    )),
+    acceptance: $ => seq(
+      'acceptance:', $._newline,
+      $._indent,
+      repeat1($.acc_clause),
+      $._dedent
+    ),
 
     acc_clause: $ => seq(
       choice('given:', 'when:', 'then:'),
-      $.text_line
+      $.prose,
+      $._newline
     ),
 
-    concept: $ => prec.left(seq(
+    concept: $ => seq(
       'Concept',
       $.identifier,
       ':',
-      repeat1(choice($.field, $.prose))
-    )),
+      $._newline,
+      $._indent,
+      repeat1(choice($.field, $.prose, $._newline)),
+      $._dedent
+    ),
 
     field: $ => seq(
       'field',
       $.identifier,
       optional(seq('(', $.type_expr, ')')),
-      optional(seq(':', repeat1($.constraint)))
+      optional(seq(':', repeat1($.constraint))),
+      $._newline
     ),
 
     type_expr: $ => choice(
@@ -121,88 +140,103 @@ module.exports = grammar({
 
     constraint: $ => choice(
       'unique',
-      seq('default:', $.expression),
-      seq('derived:', $.expression),
-      seq('invariant:', $.expression),
-      seq('at', 'least', $.number)
+      seq('default:', $.prose),
+      seq('derived:', $.prose),
+      seq('invariant:', $.prose),
+      seq('at least', $.number)
     ),
 
-    behavior: $ => prec.left(seq(
+    behavior: $ => seq(
       'Behavior', $.identifier, ':',
+      $._newline,
+      $._indent,
       repeat1(choice(
         $.implements_clause,
         $.behavior_body,
-        $.prose
-      ))
-    )),
+        $.prose,
+        $._newline
+      )),
+      $._dedent
+    ),
 
     implements_clause: $ => seq(
-      'Implements', $.req_id, repeat(seq(',', $.req_id)), '.'
+      'Implements', $.req_id, repeat(seq(',', $.req_id)), '.', $._newline
     ),
 
     behavior_body: $ => choice(
-      seq('given:', $.text_line),
-      seq('returns:', $.text_line),
-      seq('requires:', $.text_line),
-      seq('ensures:', $.text_line),
+      seq('given:', $.prose, $._newline),
+      seq('returns:', $.prose, $._newline),
+      seq('requires:', $.prose, $._newline),
+      seq('ensures:', $.prose, $._newline),
       $.ears_clause
     ),
 
-    invariant: $ => prec.left(seq(
+    invariant: $ => seq(
       'Invariant', $.identifier, ':',
+      $._newline,
+      $._indent,
       repeat1(choice(
         $.quantifier,
-        $.prose
-      ))
-    )),
-
-    quantifier: $ => seq(
-      'for each', $.identifier, 'in', $.reference, ':'
+        $.prose,
+        $._newline
+      )),
+      $._dedent
     ),
 
-    task: $ => prec.left(seq(
+    quantifier: $ => seq(
+      'for each', $.identifier, 'in', $.reference, ':', $._newline
+    ),
+
+    task: $ => seq(
       '##',
       alias($.task_id, $.identifier),
       ':',
-      token.immediate(/[^\n]+/),
+      $.prose,
+      $._newline,
+      $._indent,
       repeat1(choice(
         $.task_ref_list,
         $.task_field,
-        $.prose
-      ))
-    )),
+        $.prose,
+        $._newline
+      )),
+      $._dedent
+    ),
 
     task_id: $ => /TASK-[A-Z0-9-]+/,
 
-    task_ref_list: $ => seq('[', $.req_id, repeat(seq(',', $.req_id)), ']'),
+    task_ref_list: $ => seq('[', $.req_id, repeat(seq(',', $.req_id)), ']', $._newline),
 
     task_field: $ => seq(
       choice('file:', 'tests:', 'depends:', 'status:', 'evidence:', 'context:'),
-      $.text_line
+      $.prose,
+      $._newline
     ),
 
-    aesthetic: $ => prec.left(seq(
+    aesthetic: $ => seq(
       'Aesthetic', $.identifier, ':',
+      $._newline,
+      $._indent,
       repeat1(choice(
         $.aesthetic_field,
-        $.prose
-      ))
-    )),
+        $.prose,
+        $._newline
+      )),
+      $._dedent
+    ),
 
     aesthetic_field: $ => seq(
-      $.identifier, ':', optional('[~]'), $.text_line
+      $.identifier, ':', optional('[~]'), $.prose, $._newline
     ),
 
     foreign_block: $ => seq(
       '```',
-      alias(/[^\n]+/, $.language),
-      optional(repeat(token.immediate(/[^\n]+/))),
-      '```'
+      alias(/[a-z]+/, $.language),
+      $._newline,
+      repeat(seq($.prose, $._newline)),
+      '```',
+      $._newline
     ),
-
-    text_line: $ => $.prose,
-
-    expression: $ => $.prose,
 
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
 
@@ -212,6 +246,6 @@ module.exports = grammar({
 
     number: $ => /\d+/,
 
-    comment: $ => token(seq('//', /[^\n]*/)),
+    comment: $ => token(seq('//', /.*/))
   }
 });

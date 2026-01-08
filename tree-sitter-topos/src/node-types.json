@@ -8,7 +8,7 @@
       "required": true,
       "types": [
         {
-          "type": "text_line",
+          "type": "prose",
           "named": true
         }
       ]
@@ -65,7 +65,7 @@
           "named": true
         },
         {
-          "type": "text_line",
+          "type": "prose",
           "named": true
         }
       ]
@@ -111,7 +111,7 @@
           "named": true
         },
         {
-          "type": "text_line",
+          "type": "prose",
           "named": true
         }
       ]
@@ -149,11 +149,11 @@
       "required": false,
       "types": [
         {
-          "type": "expression",
+          "type": "number",
           "named": true
         },
         {
-          "type": "number",
+          "type": "prose",
           "named": true
         }
       ]
@@ -165,21 +165,6 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "text_line",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "expression",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
       "required": true,
       "types": [
         {
@@ -217,11 +202,15 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
           "type": "language",
+          "named": true
+        },
+        {
+          "type": "prose",
           "named": true
         }
       ]
@@ -230,7 +219,17 @@
   {
     "type": "header",
     "named": true,
-    "fields": {}
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "prose",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "implements_clause",
@@ -253,7 +252,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
         {
           "type": "identifier",
@@ -514,7 +513,7 @@
       "required": true,
       "types": [
         {
-          "type": "text_line",
+          "type": "prose",
           "named": true
         }
       ]
@@ -530,21 +529,6 @@
       "types": [
         {
           "type": "req_id",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "text_line",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "prose",
           "named": true
         }
       ]
@@ -594,10 +578,6 @@
   },
   {
     "type": ")",
-    "named": false
-  },
-  {
-    "type": "*",
     "named": false
   },
   {
@@ -669,7 +649,7 @@
     "named": false
   },
   {
-    "type": "at",
+    "type": "at least",
     "named": false
   },
   {
@@ -740,10 +720,6 @@
   {
     "type": "language",
     "named": true
-  },
-  {
-    "type": "least",
-    "named": false
   },
   {
     "type": "number",

@@ -11,12 +11,11 @@ fn main() {
     let parser_path = src_dir.join("parser.c");
     config.file(&parser_path);
 
-    // If your language uses an external scanner, add it here:
-    // let scanner_path = src_dir.join("scanner.c");
-    // config.file(&scanner_path);
+    let scanner_path = src_dir.join("scanner.c");
+    config.file(&scanner_path);
 
     println!("cargo:rerun-if-changed={}", parser_path.to_str().unwrap());
-    // println!("cargo:rerun-if-changed={}", scanner_path.to_str().unwrap());
+    println!("cargo:rerun-if-changed={}", scanner_path.to_str().unwrap());
 
     config.compile("tree-sitter-topos");
 }

@@ -26,9 +26,12 @@ acceptance:
         (text_line)
         (text_line))
       (acceptance
-        (acc_clause (text_line))
-        (acc_clause (text_line))
-        (acc_clause (text_line))))))
+        (acc_clause
+          (text_line))
+        (acc_clause
+          (text_line))
+        (acc_clause
+          (text_line))))))
 
 ==================
 Concepts
@@ -44,15 +47,20 @@ Concept Task:
 
 (source_file
   (section
-    (header)
+    (header
+      (prose))
     (concept
       (identifier)
       (field
         (identifier)
-        (type_expr (reference (identifier)))
+        (type_expr
+          (reference
+            (identifier)))
         (constraint))
       (field
         (identifier)
-        (type_expr (reference (identifier)))
+        (type_expr
+          (reference
+            (identifier)))
         (constraint
-          (expression))))))
+          (prose))))))

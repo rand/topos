@@ -14,7 +14,8 @@ spec MyProject
 Imports
 ==================
 
-import from "./file.tps": `Type1`, `Type2` import "./mod.tps" as mod
+import from "./file.tps": `Type1`, `Type2`
+import "./mod.tps" as mod
 
 ---
 
@@ -22,10 +23,11 @@ import from "./file.tps": `Type1`, `Type2` import "./mod.tps" as mod
   (import_def
     (string)
     (import_list
-      (import_item
-        (reference
-          (identifier)))))
-  (prose))
+      (import_item (reference (identifier)))
+      (import_item (reference (identifier)))))
+  (import_def
+    (string)
+    (identifier)))
 
 ==================
 Sections and Headers
@@ -38,5 +40,6 @@ Sections and Headers
 
 (source_file
   (section
-    (header))
-  (prose))
+    (header
+      (prose))
+    (prose)))
