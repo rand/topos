@@ -1,0 +1,203 @@
+{
+    "Spec Declaration": {
+        "prefix": "spec",
+        "body": [
+            "spec ${1:SpecName}",
+            "",
+            "# Principles",
+            "",
+            "- ${2:First principle}",
+            "",
+            "# Requirements",
+            "",
+            "${0}"
+        ],
+        "description": "Create a new Topos spec file"
+    },
+    "Requirement": {
+        "prefix": "req",
+        "body": [
+            "## REQ-${1:ID}: ${2:Title}",
+            "",
+            "${3:Description}",
+            "",
+            "when: ${4:trigger condition}",
+            "the system shall: ${5:expected behavior}",
+            "",
+            "acceptance:",
+            "  given: ${6:precondition}",
+            "  when: ${7:action}",
+            "  then: ${8:expected result}",
+            "${0}"
+        ],
+        "description": "Create a requirement with EARS and BDD"
+    },
+    "Requirement Simple": {
+        "prefix": "reqs",
+        "body": [
+            "## REQ-${1:ID}: ${2:Title}",
+            "",
+            "${3:Description}",
+            "${0}"
+        ],
+        "description": "Create a simple requirement"
+    },
+    "Concept": {
+        "prefix": "concept",
+        "body": [
+            "Concept ${1:Name}:",
+            "  field ${2:fieldName} (`${3:Type}`): ${4:constraint}",
+            "${0}"
+        ],
+        "description": "Create a concept (domain model)"
+    },
+    "Concept Field": {
+        "prefix": "field",
+        "body": [
+            "field ${1:name} (`${2:Type}`): ${3:constraint}"
+        ],
+        "description": "Add a field to a concept"
+    },
+    "Behavior": {
+        "prefix": "behavior",
+        "body": [
+            "Behavior ${1:name}:",
+            "  Implements ${2:REQ-ID}.",
+            "  ",
+            "  given: ${3:preconditions}",
+            "  requires: ${4:inputs}",
+            "  ensures: ${5:postconditions}",
+            "${0}"
+        ],
+        "description": "Create a behavior specification"
+    },
+    "Invariant": {
+        "prefix": "invariant",
+        "body": [
+            "Invariant ${1:Name}:",
+            "  for each ${2:item} in `${3:Collection}`:",
+            "    ${4:condition must hold}",
+            "${0}"
+        ],
+        "description": "Create an invariant"
+    },
+    "Aesthetic": {
+        "prefix": "aesthetic",
+        "body": [
+            "Aesthetic ${1:Name}:",
+            "  ${2:property}: [~] \"${3:subjective description}\"",
+            "${0}"
+        ],
+        "description": "Create an aesthetic block for soft/subjective requirements"
+    },
+    "Task": {
+        "prefix": "task",
+        "body": [
+            "## TASK-${1:ID}: ${2:Title} [${3:REQ-ID}]",
+            "",
+            "${4:Description}",
+            "",
+            "file: ${5:src/path/to/file}",
+            "tests: ${6:src/path/to/test}",
+            "status: ${7|pending,in_progress,done|}",
+            "${0}"
+        ],
+        "description": "Create a task with file references"
+    },
+    "Task with Evidence": {
+        "prefix": "taske",
+        "body": [
+            "## TASK-${1:ID}: ${2:Title} [${3:REQ-ID}]",
+            "",
+            "${4:Description}",
+            "",
+            "file: ${5:src/path/to/file}",
+            "tests: ${6:src/path/to/test}",
+            "evidence:",
+            "  pr: ${7:#PR}",
+            "  coverage: ${8:0}%",
+            "status: ${9|pending,in_progress,done|}",
+            "${0}"
+        ],
+        "description": "Create a task with evidence block"
+    },
+    "Typed Hole": {
+        "prefix": "hole",
+        "body": [
+            "[?${1:name} : `${2:InputType}` -> `${3:OutputType}`]"
+        ],
+        "description": "Create a typed hole placeholder"
+    },
+    "Simple Hole": {
+        "prefix": "?",
+        "body": [
+            "[?]"
+        ],
+        "description": "Create a simple hole placeholder"
+    },
+    "Soft Constraint": {
+        "prefix": "soft",
+        "body": [
+            "[~] \"${1:approximate or aesthetic constraint}\""
+        ],
+        "description": "Create a soft constraint"
+    },
+    "Foreign TypeSpec Block": {
+        "prefix": "typespec",
+        "body": [
+            "```typespec",
+            "model ${1:ModelName} {",
+            "  ${2:field}: ${3:type};",
+            "}",
+            "```",
+            "${0}"
+        ],
+        "description": "Embed a TypeSpec model"
+    },
+    "Foreign CUE Block": {
+        "prefix": "cue",
+        "body": [
+            "```cue",
+            "#${1:SchemaName}: {",
+            "  ${2:field}: ${3:type}",
+            "}",
+            "```",
+            "${0}"
+        ],
+        "description": "Embed a CUE schema"
+    },
+    "EARS When-Shall": {
+        "prefix": "when",
+        "body": [
+            "when: ${1:trigger condition}",
+            "the system shall: ${2:expected behavior}"
+        ],
+        "description": "EARS when/shall clause"
+    },
+    "BDD Acceptance": {
+        "prefix": "acceptance",
+        "body": [
+            "acceptance:",
+            "  given: ${1:precondition}",
+            "  when: ${2:action}",
+            "  then: ${3:expected result}"
+        ],
+        "description": "BDD given/when/then acceptance criteria"
+    },
+    "Section Header": {
+        "prefix": "#",
+        "body": [
+            "# ${1:Section Name}",
+            "",
+            "${0}"
+        ],
+        "description": "Create a section header"
+    },
+    "Import": {
+        "prefix": "import",
+        "body": [
+            "import from \"${1:path/to/spec.tps}\": `${2:Symbol}`"
+        ],
+        "description": "Import symbols from another spec"
+    }
+}

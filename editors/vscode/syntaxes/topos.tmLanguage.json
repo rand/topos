@@ -1,0 +1,231 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Topos",
+    "scopeName": "source.topos",
+    "patterns": [
+        { "include": "#comments" },
+        { "include": "#spec-declaration" },
+        { "include": "#imports" },
+        { "include": "#sections" },
+        { "include": "#blocks" },
+        { "include": "#foreign-blocks" },
+        { "include": "#holes" },
+        { "include": "#soft-constraints" },
+        { "include": "#references" },
+        { "include": "#strings" },
+        { "include": "#keywords" },
+        { "include": "#ids" }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.topos",
+                    "match": "//.*$"
+                }
+            ]
+        },
+        "spec-declaration": {
+            "patterns": [
+                {
+                    "match": "^(spec)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
+                    "captures": {
+                        "1": { "name": "keyword.other.spec.topos" },
+                        "2": { "name": "entity.name.type.spec.topos" }
+                    }
+                }
+            ]
+        },
+        "imports": {
+            "patterns": [
+                {
+                    "match": "^(import)\\s+(from)\\s+(\"[^\"]*\")\\s*:\\s*(.*)$",
+                    "captures": {
+                        "1": { "name": "keyword.control.import.topos" },
+                        "2": { "name": "keyword.control.from.topos" },
+                        "3": { "name": "string.quoted.double.topos" },
+                        "4": { "name": "variable.other.topos" }
+                    }
+                },
+                {
+                    "match": "^(import)\\s+(\"[^\"]*\")\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
+                    "captures": {
+                        "1": { "name": "keyword.control.import.topos" },
+                        "2": { "name": "string.quoted.double.topos" },
+                        "3": { "name": "keyword.control.as.topos" },
+                        "4": { "name": "variable.other.alias.topos" }
+                    }
+                }
+            ]
+        },
+        "sections": {
+            "patterns": [
+                {
+                    "match": "^(#)\\s+(.*)$",
+                    "captures": {
+                        "1": { "name": "punctuation.definition.heading.topos" },
+                        "2": { "name": "markup.heading.topos" }
+                    }
+                },
+                {
+                    "match": "^(##)\\s+(REQ-[A-Z0-9-]+):\\s*(.*)$",
+                    "captures": {
+                        "1": { "name": "punctuation.definition.heading.topos" },
+                        "2": { "name": "constant.other.requirement-id.topos" },
+                        "3": { "name": "markup.heading.requirement.topos" }
+                    }
+                },
+                {
+                    "match": "^(##)\\s+(TASK-[A-Z0-9-]+):\\s*(.*)(?:\\s*(\\[.+\\]))?\\s*$",
+                    "captures": {
+                        "1": { "name": "punctuation.definition.heading.topos" },
+                        "2": { "name": "constant.other.task-id.topos" },
+                        "3": { "name": "markup.heading.task.topos" },
+                        "4": { "name": "constant.other.requirement-ref.topos" }
+                    }
+                },
+                {
+                    "match": "^(##)\\s+(.*)$",
+                    "captures": {
+                        "1": { "name": "punctuation.definition.heading.topos" },
+                        "2": { "name": "markup.heading.topos" }
+                    }
+                }
+            ]
+        },
+        "blocks": {
+            "patterns": [
+                {
+                    "match": "^(Concept)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*:",
+                    "captures": {
+                        "1": { "name": "keyword.other.concept.topos" },
+                        "2": { "name": "entity.name.type.concept.topos" }
+                    }
+                },
+                {
+                    "match": "^(Behavior)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*:",
+                    "captures": {
+                        "1": { "name": "keyword.other.behavior.topos" },
+                        "2": { "name": "entity.name.function.behavior.topos" }
+                    }
+                },
+                {
+                    "match": "^(Invariant)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*:",
+                    "captures": {
+                        "1": { "name": "keyword.other.invariant.topos" },
+                        "2": { "name": "entity.name.type.invariant.topos" }
+                    }
+                },
+                {
+                    "match": "^(Aesthetic)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*:",
+                    "captures": {
+                        "1": { "name": "keyword.other.aesthetic.topos" },
+                        "2": { "name": "entity.name.type.aesthetic.topos" }
+                    }
+                },
+                {
+                    "match": "^\\s*(Implements)\\s+(REQ-[A-Z0-9-]+(?:\\s*,\\s*REQ-[A-Z0-9-]+)*)\\.",
+                    "captures": {
+                        "1": { "name": "keyword.other.implements.topos" },
+                        "2": { "name": "constant.other.requirement-ref.topos" }
+                    }
+                }
+            ]
+        },
+        "foreign-blocks": {
+            "begin": "^(```)([a-z]+)\\s*$",
+            "end": "^(```)\\s*$",
+            "beginCaptures": {
+                "1": { "name": "punctuation.definition.code.topos" },
+                "2": { "name": "entity.name.tag.language.topos" }
+            },
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.code.topos" }
+            },
+            "name": "meta.embedded.block.topos",
+            "contentName": "string.other.code.topos"
+        },
+        "holes": {
+            "patterns": [
+                {
+                    "match": "(\\[\\?)([^\\]]*)?(\\])",
+                    "captures": {
+                        "1": { "name": "punctuation.definition.hole.begin.topos" },
+                        "2": { "name": "comment.hole-content.topos" },
+                        "3": { "name": "punctuation.definition.hole.end.topos" }
+                    }
+                }
+            ]
+        },
+        "soft-constraints": {
+            "patterns": [
+                {
+                    "name": "punctuation.definition.soft-constraint.topos",
+                    "match": "\\[~\\]"
+                }
+            ]
+        },
+        "references": {
+            "patterns": [
+                {
+                    "match": "(`[^`]+`)",
+                    "captures": {
+                        "1": { "name": "entity.name.type.reference.topos" }
+                    }
+                }
+            ]
+        },
+        "strings": {
+            "patterns": [
+                {
+                    "name": "string.quoted.double.topos",
+                    "match": "\"[^\"]*\""
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.clause.topos",
+                    "match": "\\b(when|then|given|acceptance|returns|requires|ensures):"
+                },
+                {
+                    "name": "keyword.control.clause.topos",
+                    "match": "the system shall:"
+                },
+                {
+                    "name": "keyword.other.field.topos",
+                    "match": "\\b(field|file|tests|depends|status|evidence|context):"
+                },
+                {
+                    "name": "keyword.other.type.topos",
+                    "match": "\\b(List|Optional|one)\\b"
+                },
+                {
+                    "name": "keyword.other.constraint.topos",
+                    "match": "\\b(unique|default|derived|invariant|at least)\\b"
+                },
+                {
+                    "name": "keyword.control.loop.topos",
+                    "match": "\\bfor each\\b"
+                },
+                {
+                    "name": "keyword.other.topos",
+                    "match": "\\b(of|in|as)\\b"
+                }
+            ]
+        },
+        "ids": {
+            "patterns": [
+                {
+                    "name": "constant.other.requirement-id.topos",
+                    "match": "\\bREQ-[A-Z0-9-]+\\b"
+                },
+                {
+                    "name": "constant.other.task-id.topos",
+                    "match": "\\bTASK-[A-Z0-9-]+\\b"
+                }
+            ]
+        }
+    }
+}

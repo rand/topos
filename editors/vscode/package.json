@@ -1,0 +1,124 @@
+{
+  "name": "topos",
+  "displayName": "Topos",
+  "description": "Language support for Topos - a semantic contract language for human-AI collaboration",
+  "version": "0.2.0",
+  "publisher": "topos-lang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rand/topos"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "topos",
+    "specification",
+    "requirements",
+    "traceability",
+    "ai"
+  ],
+  "activationEvents": [
+    "onLanguage:topos"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "topos",
+        "aliases": [
+          "Topos",
+          "topos"
+        ],
+        "extensions": [
+          ".tps",
+          ".topos"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/topos-light.svg",
+          "dark": "./icons/topos-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "topos",
+        "scopeName": "source.topos",
+        "path": "./syntaxes/topos.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "topos",
+        "path": "./snippets/topos.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Topos",
+      "properties": {
+        "topos.server.path": {
+          "type": "string",
+          "default": "topos",
+          "description": "Path to the topos executable. If not absolute, searches PATH."
+        },
+        "topos.server.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "lsp"
+          ],
+          "description": "Arguments to pass to the topos server."
+        },
+        "topos.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the Topos language server."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "topos.restartServer",
+        "title": "Topos: Restart Language Server"
+      },
+      {
+        "command": "topos.showTraceReport",
+        "title": "Topos: Show Traceability Report"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.55.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
