@@ -6,7 +6,7 @@
 - [x] Task: Implement grammar for Requirements and Concepts 0869f01
 - [x] Task: Debug and fix grammar conflicts and scanner logic for complex blocks d49ee53
 - [x] Task: Fix `ears_clause` matching in Requirements grammar d49ee53
-- [ ] Task: Implement grammar for Tasks and Typed Holes
+- [x] Task: Implement grammar for Tasks and Typed Holes ddd9cb9
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Grammar Definition' (Protocol in workflow.md)
 
 ## Phase 2: Parser and Analysis Integration
