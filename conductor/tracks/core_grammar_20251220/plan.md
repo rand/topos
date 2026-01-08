@@ -4,8 +4,8 @@
 - [x] Task: Define basic Topos grammar in `tree-sitter-topos/grammar.js` c6ff3b8
 - [x] Task: Implement corpus tests for top-level sections a1c3e82
 - [x] Task: Implement grammar for Requirements and Concepts 0869f01
-- [x] Task: Debug and fix grammar conflicts and scanner logic for complex blocks 1910405
-- [ ] Task: Fix ears_clause matching in Requirements grammar
+- [x] Task: Debug and fix grammar conflicts and scanner logic for complex blocks d49ee53
+- [x] Task: Fix `ears_clause` matching in Requirements grammar d49ee53
 - [ ] Task: Implement grammar for Tasks and Typed Holes
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Grammar Definition' (Protocol in workflow.md)
 
