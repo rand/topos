@@ -44,6 +44,10 @@
         {
           "type": "identifier",
           "named": true
+        },
+        {
+          "type": "prose",
+          "named": true
         }
       ]
     }
@@ -76,7 +80,7 @@
       "required": true,
       "types": [
         {
-          "type": "behavior_rule",
+          "type": "behavior_body",
           "named": true
         },
         {
@@ -86,12 +90,16 @@
         {
           "type": "implements_clause",
           "named": true
+        },
+        {
+          "type": "prose",
+          "named": true
         }
       ]
     }
   },
   {
-    "type": "behavior_rule",
+    "type": "behavior_body",
     "named": true,
     "fields": {},
     "children": {
@@ -124,6 +132,10 @@
         {
           "type": "identifier",
           "named": true
+        },
+        {
+          "type": "prose",
+          "named": true
         }
       ]
     }
@@ -137,11 +149,11 @@
       "required": false,
       "types": [
         {
-          "type": "number",
+          "type": "expression",
           "named": true
         },
         {
-          "type": "text_line",
+          "type": "number",
           "named": true
         }
       ]
@@ -157,6 +169,21 @@
       "types": [
         {
           "type": "text_line",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "prose",
           "named": true
         }
       ]
@@ -290,20 +317,15 @@
           "named": true
         },
         {
-          "type": "quantifier",
+          "type": "prose",
           "named": true
         },
         {
-          "type": "text_line",
+          "type": "quantifier",
           "named": true
         }
       ]
     }
-  },
-  {
-    "type": "prose",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "quantifier",
@@ -357,6 +379,10 @@
         },
         {
           "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "prose",
           "named": true
         }
       ]
@@ -465,11 +491,15 @@
           "named": true
         },
         {
-          "type": "req_id",
+          "type": "prose",
           "named": true
         },
         {
           "type": "task_field",
+          "named": true
+        },
+        {
+          "type": "task_ref_list",
           "named": true
         }
       ]
@@ -485,6 +515,36 @@
       "types": [
         {
           "type": "text_line",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "task_ref_list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "req_id",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "text_line",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "prose",
           "named": true
         }
       ]
@@ -609,7 +669,7 @@
     "named": false
   },
   {
-    "type": "at least",
+    "type": "at",
     "named": false
   },
   {
@@ -682,6 +742,10 @@
     "named": true
   },
   {
+    "type": "least",
+    "named": false
+  },
+  {
     "type": "number",
     "named": true
   },
@@ -696,6 +760,10 @@
   {
     "type": "one",
     "named": false
+  },
+  {
+    "type": "prose",
+    "named": true
   },
   {
     "type": "req_id",
@@ -724,10 +792,6 @@
   {
     "type": "tests:",
     "named": false
-  },
-  {
-    "type": "text_line",
-    "named": true
   },
   {
     "type": "the system shall:",
