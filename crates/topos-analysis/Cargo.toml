@@ -13,6 +13,8 @@ topos-syntax = { path = "../topos-syntax" }
 facet-core.workspace = true
 tree-sitter-topos = { path = "../../tree-sitter-topos" }
 tree-sitter.workspace = true
+tree-sitter-typescript = "0.23"
+regex = "1.10"
 
 [dev-dependencies]
 proptest.workspace = true

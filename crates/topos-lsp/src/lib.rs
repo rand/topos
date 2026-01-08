@@ -14,8 +14,8 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use topos_analysis::{
-    compute_diagnostics, compute_symbols, compute_traceability, resolve_references,
-    AnalysisDatabase, ReferenceKind, SymbolKind,
+    compute_diagnostics, compute_traceability, compute_unified_symbols, resolve_references,
+    AnalysisDatabase, ForeignSymbolKind, ReferenceKind, UnifiedSymbol,
 };
 use topos_syntax::Span;
 
@@ -106,36 +106,51 @@ impl ToposServer {
         let file = self.get_file(uri)?;
         let db = self.db.lock().await;
 
-        let symbol_table = compute_symbols(&*db, file);
+        let unified_table = compute_unified_symbols(&*db, file);
         let offset = self.position_to_offset(uri, position)?;
 
-        // Find symbol at position
-        for symbol in symbol_table.symbols.values() {
+        // Find symbol at position (Topos symbols)
+        for symbol in unified_table.topos().symbols.values() {
             if span_contains(&symbol.span, offset) {
-                let kind_str = match symbol.kind {
-                    SymbolKind::Requirement => "requirement",
-                    SymbolKind::Task => "task",
-                    SymbolKind::Concept => "concept",
-                    SymbolKind::Behavior => "behavior",
-                    SymbolKind::Invariant => "invariant",
-                    SymbolKind::Field => "field",
-                };
-
-                let contents = format!("**{}** `{}`", kind_str, symbol.name);
+                let unified = UnifiedSymbol::Topos(symbol.clone());
                 return Some(Hover {
                     contents: HoverContents::Markup(MarkupContent {
                         kind: MarkupKind::Markdown,
-                        value: contents,
+                        value: unified.hover_docs(),
                     }),
                     range: Some(span_to_range(&symbol.span)),
                 });
             }
         }
 
-        // Check references
+        // Check references - now resolve against unified table
         let resolved = resolve_references(&*db, file);
         for ref_result in &resolved.references {
             if span_contains(&ref_result.reference.span, offset) {
+                // Try to resolve against unified symbol table (includes foreign symbols)
+                if let Some(unified_sym) = unified_table.get(&ref_result.reference.name) {
+                    let kind_str = match ref_result.reference.kind {
+                        ReferenceKind::Type => "type reference",
+                        ReferenceKind::Requirement => "requirement reference",
+                        ReferenceKind::Task => "task reference",
+                        ReferenceKind::Concept => "concept reference",
+                    };
+
+                    let target_info = unified_sym.hover_docs();
+                    let contents = format!(
+                        "**{}** `{}`\n\n✓ resolved to:\n\n{}",
+                        kind_str, ref_result.reference.name, target_info
+                    );
+                    return Some(Hover {
+                        contents: HoverContents::Markup(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: contents,
+                        }),
+                        range: Some(span_to_range(&ref_result.reference.span)),
+                    });
+                }
+
+                // Unresolved reference
                 let kind_str = match ref_result.reference.kind {
                     ReferenceKind::Type => "type reference",
                     ReferenceKind::Requirement => "requirement reference",
@@ -143,15 +158,9 @@ impl ToposServer {
                     ReferenceKind::Concept => "concept reference",
                 };
 
-                let status = if ref_result.symbol.is_some() {
-                    "✓ resolved"
-                } else {
-                    "✗ unresolved"
-                };
-
                 let contents = format!(
-                    "**{}** `{}`\n\n{}",
-                    kind_str, ref_result.reference.name, status
+                    "**{}** `{}`\n\n✗ unresolved",
+                    kind_str, ref_result.reference.name
                 );
                 return Some(Hover {
                     contents: HoverContents::Markup(MarkupContent {
@@ -196,15 +205,26 @@ impl ToposServer {
         let db = self.db.lock().await;
 
         let offset = self.position_to_offset(uri, position).unwrap_or(0);
-        let symbol_table = compute_symbols(&*db, file);
+        let unified_table = compute_unified_symbols(&*db, file);
 
         // Find which symbol we're on
         let mut target_name: Option<String> = None;
 
-        for symbol in symbol_table.symbols.values() {
+        // Check Topos symbols
+        for symbol in unified_table.topos().symbols.values() {
             if span_contains(&symbol.span, offset) {
                 target_name = Some(symbol.name.clone());
                 break;
+            }
+        }
+
+        // Check foreign symbols
+        if target_name.is_none() {
+            for symbol in &unified_table.foreign().symbols {
+                if span_contains(&symbol.span, offset) {
+                    target_name = Some(symbol.name.clone());
+                    break;
+                }
             }
         }
 
@@ -226,11 +246,11 @@ impl ToposServer {
         // Collect all locations where this name appears
         let mut locations = vec![];
 
-        // Add definition
-        if let Some(symbol) = symbol_table.get(&name) {
+        // Add definition (from unified table)
+        if let Some(unified_sym) = unified_table.get(&name) {
             locations.push(Location {
                 uri: uri.clone(),
-                range: span_to_range(&symbol.span),
+                range: span_to_range(&unified_sym.span()),
             });
         }
 
@@ -255,7 +275,8 @@ impl ToposServer {
         };
         let db = self.db.lock().await;
 
-        let symbol_table = compute_symbols(&*db, file);
+        let unified_table = compute_unified_symbols(&*db, file);
+        let symbol_table = unified_table.topos();
         let trace = compute_traceability(&*db, file);
 
         let mut items = vec![];
@@ -308,6 +329,27 @@ impl ToposServer {
                 label: name.clone(),
                 kind: Some(CompletionItemKind::FUNCTION),
                 detail: Some(detail),
+                ..Default::default()
+            });
+        }
+
+        // Add foreign symbols (types from embedded code blocks)
+        for sym in &unified_table.foreign().symbols {
+            let (kind, detail) = match sym.kind {
+                ForeignSymbolKind::Model => (CompletionItemKind::STRUCT, format!("{} model", sym.language)),
+                ForeignSymbolKind::Interface => (CompletionItemKind::INTERFACE, format!("{} interface", sym.language)),
+                ForeignSymbolKind::TypeAlias => (CompletionItemKind::TYPE_PARAMETER, format!("{} type", sym.language)),
+                ForeignSymbolKind::Enum => (CompletionItemKind::ENUM, format!("{} enum", sym.language)),
+                ForeignSymbolKind::Union => (CompletionItemKind::ENUM, format!("{} union", sym.language)),
+                ForeignSymbolKind::Schema => (CompletionItemKind::STRUCT, format!("{} schema", sym.language)),
+                ForeignSymbolKind::Namespace => (CompletionItemKind::MODULE, format!("{} namespace", sym.language)),
+                ForeignSymbolKind::Operation => (CompletionItemKind::METHOD, format!("{} operation", sym.language)),
+            };
+            items.push(CompletionItem {
+                label: sym.name.clone(),
+                kind: Some(kind),
+                detail: Some(detail),
+                documentation: Some(Documentation::String(sym.declaration.clone())),
                 ..Default::default()
             });
         }

@@ -1861,10 +1861,12 @@ version = "0.1.0"
 dependencies = [
  "facet-core",
  "proptest",
+ "regex",
  "salsa",
  "topos-syntax",
  "tree-sitter",
  "tree-sitter-topos",
+ "tree-sitter-typescript",
 ]
 
 [[package]]
@@ -2099,6 +2101,16 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "tree-sitter",
+]
+
+[[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5f76ed8d947a75cc446d5fccd8b602ebf0cde64ccf2ffa434d873d7a575eff"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
 ]
 
 [[package]]
