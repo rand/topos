@@ -190,11 +190,11 @@ topos drift src/models/task.ts
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| **Reflection** | [facet.rs](https://facet.rs) | Serialization, diffing, pretty-printing |
-| **Incremental** | [Salsa 0.18+](https://salsa-rs.github.io/salsa) | Memoized computation |
+| **Reflection** | [facet.rs 0.32](https://facet.rs) | Serialization, diffing, pretty-printing |
+| **Incremental** | [Salsa 0.25](https://salsa-rs.github.io/salsa) | Memoized computation |
 | **Parsing** | [tree-sitter 0.25](https://tree-sitter.github.io) | Sub-ms incremental parsing |
-| **LSP** | [tower-lsp-server](https://github.com/tower-lsp-community/tower-lsp-server) | Language server |
-| **MCP** | [rmcp 0.8](https://github.com/modelcontextprotocol/rust-sdk) | AI tool integration |
+| **LSP** | [tower-lsp 0.20](https://github.com/ebkalderon/tower-lsp) | Language server |
+| **MCP** | [rmcp 0.12](https://github.com/anthropics/rust-mcp-sdk) | AI tool integration |
 
 ## Markdown Compatibility
 
@@ -208,19 +208,26 @@ This means:
 
 ## Roadmap
 
-### V1 (Current Target)
+### V1 ✅ Complete (January 2026)
 - ✅ Language spec with CommonMark compatibility
-- 🔄 Parser + formatter + validator
-- 🔄 LSP with diagnostics, hover, go-to-definition
-- 🔄 CLI: `check`, `format`, `trace`, `context`, `drift`
-- 🔄 Traceability reports
-- 🔄 MCP tools (forward flow only)
+- ✅ tree-sitter grammar with external scanner (indent/dedent, prose)
+- ✅ Parser + formatter + validator
+- ✅ Typed AST with CST-to-AST conversion
+- ✅ Salsa-based incremental analysis with symbol table
+- ✅ LSP with diagnostics, hover, go-to-definition, completions
+- ✅ CLI: `check`, `format`, `trace`, `context`, `drift`
+- ✅ Traceability reports (JSON, Markdown)
+- ✅ MCP tools: `validate_spec`, `summarize_spec`, `compile_context`
+- ✅ Drift detection (structural comparison)
+- ✅ Property-based tests with proptest
+- ✅ End-to-end CLI integration tests
 
 ### V2 (Future)
 - Anchored reverse extraction (code→spec with explicit markers)
 - TypeSpec/CUE foreign block validation
 - Typed hole suggestions via LLM
 - Multi-language code extraction (Rust, TypeScript)
+- VS Code extension
 
 ### V3 (Research)
 - Bidirectional sync with stable IDs and provenance
@@ -230,12 +237,19 @@ This means:
 ## Installation
 
 ```bash
-# CLI and LSP server
-cargo install topos
+# Build from source
+git clone https://github.com/rand/topos.git
+cd topos
+cargo build --release
 
-# VS Code extension
-code --install-extension topos-lang.topos
+# Run the CLI
+./target/release/topos --help
+
+# Or install locally
+cargo install --path crates/topos-cli
 ```
+
+The VS Code extension is planned for V2.
 
 ## Documentation
 

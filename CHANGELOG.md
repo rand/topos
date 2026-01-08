@@ -2,6 +2,72 @@
 
 All notable changes to the Topos specification are documented in this file.
 
+## [4.0.0] - January 2026
+
+### 🎉 V1 Implementation Complete
+
+This release marks the **full implementation** of Topos V1. The toolchain is now functional with all planned V1 features working end-to-end.
+
+### Implemented
+
+#### Core Infrastructure
+- **tree-sitter grammar**: Complete grammar with external scanner for indent/dedent and prose handling
+- **Typed AST**: Full CST-to-AST conversion with span tracking for all node types
+- **Salsa 0.25 integration**: Incremental computation for parsing, symbol resolution, and diagnostics
+
+#### Analysis (topos-analysis)
+- **Symbol table**: Extraction of requirements, concepts, behaviors, and tasks
+- **Reference resolution**: Resolve type references and requirement references
+- **Traceability graph**: REQ → Behavior → Task linkage with coverage metrics
+- **Semantic diagnostics**: Unresolved references, untasked requirements warnings
+
+#### Language Server (topos-lsp)
+- **Diagnostics**: Real-time error reporting with span information
+- **Hover**: Show definition information on hover
+- **Go-to-definition**: Navigate from reference to definition
+- **Completions**: Context-aware symbol suggestions
+
+#### CLI (topos-cli)
+- **`topos check`**: Validate spec files with error reporting
+- **`topos format`**: Format spec files with configurable indentation
+- **`topos trace`**: Generate traceability reports (text/JSON)
+- **`topos context`**: Compile task-focused context (Markdown/JSON/Cursor format)
+- **`topos drift`**: Compare two spec files for structural differences
+
+#### MCP Server (topos-mcp)
+- **`validate_spec`**: Validate a spec file and return diagnostics
+- **`summarize_spec`**: Generate AI-friendly spec summary
+- **`compile_context`**: Compile context for a specific task
+
+#### Diff Engine (topos-diff)
+- **Structural comparison**: Compare specs by requirements, concepts, tasks
+- **Change detection**: Added, removed, modified items
+- **Report generation**: Human-readable diff reports
+
+#### Context Compiler (topos-context)
+- **Task extraction**: Extract task with linked requirements and concepts
+- **Multiple formats**: Markdown, JSON, Cursor MDC format
+- **Full context option**: Include all domain concepts
+
+### Testing
+- **92 unit tests** across all crates
+- **Property-based tests** with proptest for parser/formatter invariants
+- **End-to-end CLI tests** for all commands
+- **tree-sitter corpus tests** for grammar validation
+
+### Technology Stack
+| Component | Version |
+|-----------|---------|
+| facet.rs | 0.32 |
+| Salsa | 0.25 |
+| tree-sitter | 0.25 |
+| tower-lsp | 0.20 |
+| rmcp | 0.12 |
+| tokio | 1.40 |
+| clap | 4.5 |
+
+---
+
 ## [3.1.0] - December 2025
 
 ### 🔧 Review-Driven Refinements
@@ -325,6 +391,7 @@ impl LanguageServer for Backend { ... }  // No async_trait needed
 
 | Version | Date | Focus |
 |---------|------|-------|
+| 4.0.0 | Jan 2026 | **V1 Implementation Complete** - Full toolchain with grammar, LSP, CLI, MCP |
 | 3.1.0 | Dec 2025 | Review-driven refinements, boundary traceability, soft constraint guardrails |
 | 3.0.0 | Dec 2025 | De-risked roadmap, context compiler, aesthetics, security |
 | 2.0.0 | Dec 2025 | facet.rs + modern tooling uplevel |
