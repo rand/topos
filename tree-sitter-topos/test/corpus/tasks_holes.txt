@@ -1,0 +1,47 @@
+==================
+Tasks and Holes
+==================
+
+# Tasks
+
+## TASK-1: Implement Feature [REQ-1]
+file: src/main.rs
+tests: src/test.rs
+status: pending
+
+Concept Hole:
+  field unknown ([?])
+  field partial ([? `String` -> `Int`])
+
+---
+
+(source_file
+  (section
+    (header
+      (line_content))
+    (task
+      (identifier)
+      (line_content)
+      (task_ref_list
+        (identifier))
+      (task_field
+        (prose
+          (line_content)))
+      (task_field
+        (prose
+          (line_content)))
+      (task_field
+        (prose
+          (line_content))))
+    (concept
+      (identifier)
+      (field
+        (identifier)
+        (type_expr
+          (hole)))
+      (field
+        (identifier)
+        (type_expr
+          (hole
+            (prose
+              (line_content))))))))
