@@ -1,7 +1,13 @@
-//! Structural diffing for Topos specifications.
+//! Structural and semantic diffing for Topos specifications.
 //!
 //! This crate provides tools for comparing two Topos specifications
 //! and generating drift reports that show what has changed.
+//!
+//! ## Comparison Strategies
+//!
+//! - **Structural**: Pure AST-based comparison (fast, deterministic)
+//! - **Semantic**: LLM-based meaning comparison (understands intent)
+//! - **Hybrid**: Structural + semantic for prose content (default)
 //!
 //! # Example
 //!
@@ -14,6 +20,29 @@
 //! let report = diff_specs(old_source, new_source);
 //! // report.is_empty() may be true if only the spec name changed
 //! ```
+//!
+//! # Semantic Diffing
+//!
+//! ```ignore
+//! use topos_diff::{semantic_diff, SemanticDiffOptions, ComparisonStrategy};
+//!
+//! let options = SemanticDiffOptions {
+//!     strategy: ComparisonStrategy::Hybrid,
+//!     ..Default::default()
+//! };
+//!
+//! // Async version (requires MCP server)
+//! let report = semantic_diff(old_source, new_source, options).await?;
+//! ```
+
+pub mod semantic;
+pub mod strategy;
+
+pub use semantic::{
+    semantic_diff, semantic_diff_sync, SemanticDiffOptions, SemanticDiffReport,
+    SemanticDiscrepancy, SemanticElementResult,
+};
+pub use strategy::{ComparisonStrategy, ElementType};
 
 use std::collections::{HashMap, HashSet};
 

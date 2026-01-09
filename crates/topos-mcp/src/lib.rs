@@ -1,9 +1,19 @@
-//! MCP (Model Context Protocol) server for Topos.
+//! MCP (Model Context Protocol) server and client for Topos.
+//!
+//! ## Server
 //!
 //! Provides AI-accessible tools for working with Topos specifications:
 //! - `validate_spec` - Validate a spec file and return diagnostics
 //! - `summarize_spec` - Get an AI-friendly summary of a spec
 //! - `compile_context` - Compile task-focused context
+//!
+//! ## Client
+//!
+//! Provides MCP client for LLM-powered semantic analysis:
+//! - Semantic drift detection between spec versions
+//! - LLM-as-Judge for prose requirement verification
+
+pub mod client;
 
 use std::sync::Arc;
 

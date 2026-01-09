@@ -62,6 +62,12 @@ enum Commands {
         /// Output format
         #[arg(long, short, default_value = "text")]
         format: DriftFormat,
+        /// Use structural comparison only (no LLM)
+        #[arg(long, conflicts_with = "semantic")]
+        structural: bool,
+        /// Use semantic (LLM) comparison only
+        #[arg(long, conflicts_with = "structural")]
+        semantic: bool,
     },
     /// Format Topos files (placeholder)
     Format {
@@ -166,7 +172,9 @@ async fn run(cli: Cli) -> Result<bool> {
             old_file,
             new_file,
             format,
-        } => drift_files(&old_file, &new_file, format),
+            structural,
+            semantic,
+        } => drift_files(&old_file, &new_file, format, structural, semantic).await,
         Commands::Format { files, check } => format_files(&files, check),
         Commands::Gather {
             path,
@@ -343,23 +351,73 @@ fn context_for_task(
     }
 }
 
-fn drift_files(old_path: &PathBuf, new_path: &PathBuf, format: DriftFormat) -> Result<bool> {
+async fn drift_files(
+    old_path: &PathBuf,
+    new_path: &PathBuf,
+    format: DriftFormat,
+    structural_only: bool,
+    semantic_only: bool,
+) -> Result<bool> {
     let old_content = std::fs::read_to_string(old_path)
         .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", old_path.display(), e))?;
     let new_content = std::fs::read_to_string(new_path)
         .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", new_path.display(), e))?;
 
-    let report = topos_diff::diff_specs(&old_content, &new_content)
+    // Determine comparison strategy
+    let strategy = if structural_only {
+        topos_diff::ComparisonStrategy::Structural
+    } else if semantic_only {
+        topos_diff::ComparisonStrategy::Semantic
+    } else {
+        topos_diff::ComparisonStrategy::Hybrid
+    };
+
+    let options = topos_diff::SemanticDiffOptions {
+        strategy,
+        fallback_on_error: !semantic_only, // Don't fallback if explicitly requesting semantic
+        ..Default::default()
+    };
+
+    // Perform semantic diff (falls back to structural if MCP unavailable)
+    let report = topos_diff::semantic_diff(&old_content, &new_content, options)
+        .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    if report.is_empty() {
+    if !report.has_changes() {
         println!("{} No differences found", "✓".green().bold());
+        if !report.semantic_available && strategy.requires_mcp() {
+            println!(
+                "{}: Semantic analysis unavailable (set TOPOS_MCP_URL or use --structural)",
+                "note".blue()
+            );
+        }
         return Ok(true);
+    }
+
+    // Show strategy info
+    if !report.semantic_available && strategy.requires_mcp() {
+        eprintln!(
+            "{}: Semantic analysis unavailable, using structural only",
+            "warning".yellow()
+        );
+        eprintln!(
+            "  Set TOPOS_MCP_URL to enable LLM-based semantic comparison\n"
+        );
     }
 
     match format {
         DriftFormat::Text => println!("{}", report.format_text()),
         DriftFormat::Json => println!("{}", report.format_json()),
+    }
+
+    // Return success, but indicate if there were high-severity semantic drifts
+    let drifted = report.drifted_elements(0.7);
+    if !drifted.is_empty() {
+        eprintln!(
+            "\n{}: {} element(s) with significant semantic drift detected",
+            "warning".yellow(),
+            drifted.len()
+        );
     }
 
     Ok(true)
