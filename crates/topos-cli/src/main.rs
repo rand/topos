@@ -90,6 +90,21 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Extract a Topos spec from annotated Rust source files
+    Extract {
+        /// Paths to Rust files or directories (supports glob patterns)
+        #[arg(value_name = "PATHS", required = true)]
+        paths: Vec<String>,
+        /// Name for the generated specification
+        #[arg(long, short = 'n', default_value = "ExtractedSpec")]
+        spec_name: String,
+        /// Output file (prints to stdout if not specified)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+        /// Merge with an existing spec file
+        #[arg(long, short)]
+        merge: Option<PathBuf>,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -181,6 +196,12 @@ async fn run(cli: Cli) -> Result<bool> {
             task_id,
             dry_run,
         } => gather_evidence(&path, task_id.as_deref(), dry_run),
+        Commands::Extract {
+            paths,
+            spec_name,
+            output,
+            merge,
+        } => extract_spec(&paths, &spec_name, output.as_ref(), merge.as_ref()),
     }
 }
 
@@ -726,4 +747,241 @@ fn commit_touches_file(_repo: &git2::Repository, commit: &git2::Commit, file_pat
     } else {
         false
     }
+}
+
+fn extract_spec(
+    paths: &[String],
+    spec_name: &str,
+    output: Option<&PathBuf>,
+    merge: Option<&PathBuf>,
+) -> Result<bool> {
+    use glob::glob;
+
+    // Collect all Rust files from paths (supports glob patterns)
+    let mut rust_files: Vec<PathBuf> = Vec::new();
+
+    for pattern in paths {
+        // Check if it's a glob pattern or a direct path
+        if pattern.contains('*') || pattern.contains('?') || pattern.contains('[') {
+            // Glob pattern
+            for entry in glob(pattern)
+                .map_err(|e| anyhow::anyhow!("Invalid glob pattern '{}': {}", pattern, e))?
+            {
+                match entry {
+                    Ok(path) => {
+                        if path.is_file()
+                            && path.extension().map(|e| e == "rs").unwrap_or(false)
+                        {
+                            rust_files.push(path);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "{}: Failed to read path: {}",
+                            "warning".yellow(),
+                            e
+                        );
+                    }
+                }
+            }
+        } else {
+            let path = PathBuf::from(pattern);
+            if path.is_file() {
+                if path.extension().map(|e| e == "rs").unwrap_or(false) {
+                    rust_files.push(path);
+                }
+            } else if path.is_dir() {
+                // Recursively find .rs files in directory
+                collect_rust_files(&path, &mut rust_files)?;
+            } else {
+                eprintln!(
+                    "{}: Path does not exist: {}",
+                    "warning".yellow(),
+                    path.display()
+                );
+            }
+        }
+    }
+
+    if rust_files.is_empty() {
+        eprintln!("{}: No Rust files found", "error".red().bold());
+        return Ok(false);
+    }
+
+    println!(
+        "{} {} Rust file(s)...",
+        "Scanning".blue().bold(),
+        rust_files.len()
+    );
+
+    // Convert PathBufs to path strings
+    let file_paths: Vec<&str> = rust_files
+        .iter()
+        .map(|p| p.to_str().unwrap_or(""))
+        .filter(|p| !p.is_empty())
+        .collect();
+
+    // Extract anchors from all files
+    let collection = topos_analysis::extract_anchors_from_files(&file_paths);
+
+    if collection.anchors.is_empty() {
+        println!(
+            "{}: No @topos() annotations found in {} file(s)",
+            "info".blue(),
+            rust_files.len()
+        );
+        return Ok(true);
+    }
+
+    // Report findings
+    let concept_count = collection.concepts().count();
+    let behavior_count = collection.behaviors().count();
+    let field_count = collection.fields().count();
+    let req_count = collection.requirements().count();
+
+    println!(
+        "{}: {} concept(s), {} behavior(s), {} field(s), {} requirement(s)",
+        "Found".green().bold(),
+        concept_count,
+        behavior_count,
+        field_count,
+        req_count
+    );
+
+    // Generate spec
+    let generated_spec = collection.generate_spec(spec_name);
+
+    // Handle merge mode
+    let final_spec = if let Some(merge_path) = merge {
+        let existing = std::fs::read_to_string(merge_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", merge_path.display(), e))?;
+        merge_specs(&existing, &generated_spec)?
+    } else {
+        generated_spec
+    };
+
+    // Output
+    if let Some(output_path) = output {
+        std::fs::write(output_path, &final_spec)
+            .map_err(|e| anyhow::anyhow!("Failed to write {}: {}", output_path.display(), e))?;
+        println!(
+            "{} {}",
+            "Wrote".green().bold(),
+            output_path.display()
+        );
+    } else {
+        println!();
+        println!("{}", final_spec);
+    }
+
+    Ok(true)
+}
+
+/// Recursively collect .rs files from a directory
+fn collect_rust_files(dir: &PathBuf, files: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rust_files(&path, files)?;
+        } else if path.extension().map(|e| e == "rs").unwrap_or(false) {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// Merge generated spec content into an existing spec
+fn merge_specs(existing: &str, generated: &str) -> Result<String> {
+    let mut result = existing.to_string();
+
+    // Extract concepts section from generated
+    if let Some(concepts_start) = generated.find("# Concepts") {
+        let concepts_end = generated[concepts_start..]
+            .find("\n# ")
+            .map(|i| concepts_start + i)
+            .unwrap_or(generated.len());
+        let concepts_section = &generated[concepts_start..concepts_end];
+        let new_concepts = extract_items_from_section(concepts_section);
+
+        if let Some(existing_concepts) = result.find("# Concepts") {
+            let existing_end = result[existing_concepts..]
+                .find("\n# ")
+                .map(|i| existing_concepts + i)
+                .unwrap_or(result.len());
+            let existing_concepts_text = result[existing_concepts..existing_end].to_string();
+
+            // Collect concepts to add
+            let concepts_to_add: Vec<_> = new_concepts
+                .into_iter()
+                .filter(|c| !existing_concepts_text.contains(c))
+                .collect();
+
+            // Insert at end of concepts section
+            for concept in concepts_to_add.into_iter().rev() {
+                result.insert_str(existing_end, &format!("\n{}", concept));
+            }
+        } else {
+            result.push_str("\n\n");
+            result.push_str(concepts_section);
+        }
+    }
+
+    // Extract behaviors section from generated
+    if let Some(behaviors_start) = generated.find("# Behaviors") {
+        let behaviors_end = generated[behaviors_start..]
+            .find("\n# ")
+            .map(|i| behaviors_start + i)
+            .unwrap_or(generated.len());
+        let behaviors_section = &generated[behaviors_start..behaviors_end];
+        let new_behaviors = extract_items_from_section(behaviors_section);
+
+        if let Some(existing_behaviors) = result.find("# Behaviors") {
+            let existing_end = result[existing_behaviors..]
+                .find("\n# ")
+                .map(|i| existing_behaviors + i)
+                .unwrap_or(result.len());
+            let existing_behaviors_text = result[existing_behaviors..existing_end].to_string();
+
+            let behaviors_to_add: Vec<_> = new_behaviors
+                .into_iter()
+                .filter(|b| !existing_behaviors_text.contains(b))
+                .collect();
+
+            for behavior in behaviors_to_add.into_iter().rev() {
+                result.insert_str(existing_end, &format!("\n{}", behavior));
+            }
+        } else {
+            result.push_str("\n\n");
+            result.push_str(behaviors_section);
+        }
+    }
+
+    Ok(result)
+}
+
+/// Extract individual items (Concept X:, Behavior Y:) from a section
+fn extract_items_from_section(section: &str) -> Vec<String> {
+    let mut items = Vec::new();
+    let mut current_item = String::new();
+    let mut in_item = false;
+
+    for line in section.lines() {
+        if line.starts_with("Concept ") || line.starts_with("Behavior ") {
+            if in_item && !current_item.is_empty() {
+                items.push(current_item.trim_end().to_string());
+            }
+            current_item = line.to_string();
+            in_item = true;
+        } else if in_item {
+            current_item.push('\n');
+            current_item.push_str(line);
+        }
+    }
+
+    if in_item && !current_item.is_empty() {
+        items.push(current_item.trim_end().to_string());
+    }
+
+    items
 }

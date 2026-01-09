@@ -27,6 +27,7 @@
 //! assert!(!diags.has_errors());
 //! ```
 
+pub mod anchors;
 pub mod db;
 pub mod diagnostics;
 pub mod foreign;
@@ -50,6 +51,7 @@ pub use traceability::{traceability as compute_traceability, TraceNode, TraceNod
 pub use foreign::{foreign_symbols as compute_foreign_symbols, ForeignSymbol, ForeignSymbolKind, ForeignSymbols};
 pub use polyglot::{unified_symbols as compute_unified_symbols, resolve_reference, resolve_type_reference, UnifiedSymbol, UnifiedSymbolTable};
 pub use holes::{extract_holes, HoleCollection, HoleParent, HoleWithContext, SignaturePosition};
+pub use anchors::{extract_anchors, extract_anchors_from_files, Anchor, AnchorCollection, AnchorKind, CodeElement, CodeElementKind};
 
 // ============================================================================
 // Legacy API (for backward compatibility with existing LSP/CLI)

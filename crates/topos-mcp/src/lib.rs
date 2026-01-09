@@ -7,6 +7,7 @@
 //! - `summarize_spec` - Get an AI-friendly summary of a spec
 //! - `compile_context` - Compile task-focused context
 //! - `suggest_hole` - Get LLM-powered suggestions for typed holes
+//! - `extract_spec` - Extract Topos spec from annotated Rust code
 //!
 //! ## Client
 //!
@@ -362,6 +363,100 @@ impl ToposServer {
 
         tool_result(output)
     }
+
+    /// Handle extract_spec tool call.
+    ///
+    /// Extracts Topos spec from Rust source files using `@topos()` annotations.
+    fn extract_spec(&self, args: &Value) -> CallToolResult {
+        let paths = match args.get("paths") {
+            Some(Value::Array(arr)) => arr
+                .iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+            Some(Value::String(s)) => vec![s.clone()],
+            _ => return tool_error("Error: Missing 'paths' argument (string or array of strings)"),
+        };
+
+        if paths.is_empty() {
+            return tool_error("Error: No paths provided");
+        }
+
+        let spec_name = args
+            .get("spec_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ExtractedSpec");
+
+        // Expand glob patterns and collect all Rust files
+        let mut rust_files = Vec::new();
+        for path in &paths {
+            if path.contains('*') {
+                // Glob pattern - expand it
+                if let Ok(entries) = glob::glob(path) {
+                    for entry in entries.flatten() {
+                        if entry.extension().map_or(false, |e| e == "rs") {
+                            rust_files.push(entry);
+                        }
+                    }
+                }
+            } else {
+                let p = std::path::Path::new(path);
+                if p.is_file() && p.extension().map_or(false, |e| e == "rs") {
+                    rust_files.push(p.to_path_buf());
+                } else if p.is_dir() {
+                    // Recursively find .rs files
+                    if let Ok(entries) = glob::glob(&format!("{}/**/*.rs", path)) {
+                        for entry in entries.flatten() {
+                            rust_files.push(entry);
+                        }
+                    }
+                }
+            }
+        }
+
+        if rust_files.is_empty() {
+            return tool_error("Error: No Rust files found in the provided paths");
+        }
+
+        // Extract anchors from all files
+        let collection = topos_analysis::extract_anchors_from_files(&rust_files);
+
+        if collection.is_empty() {
+            return tool_error("No @topos() annotations found in the provided files");
+        }
+
+        // Generate the spec
+        let spec = collection.generate_spec(spec_name);
+
+        // Build output with summary
+        let mut output = String::new();
+        output.push_str(&format!("# Extracted Specification: {}\n\n", spec_name));
+        output.push_str(&format!("Extracted from {} file(s):\n", rust_files.len()));
+        for f in &rust_files {
+            output.push_str(&format!("- {}\n", f.display()));
+        }
+        output.push_str(&format!("\nFound {} anchor(s):\n", collection.len()));
+        output.push_str(&format!(
+            "- {} concept(s)\n",
+            collection.concepts().count()
+        ));
+        output.push_str(&format!(
+            "- {} behavior(s)\n",
+            collection.behaviors().count()
+        ));
+        output.push_str(&format!(
+            "- {} field(s)\n",
+            collection
+                .anchors
+                .iter()
+                .filter(|a| a.kind == topos_analysis::AnchorKind::Field)
+                .count()
+        ));
+        output.push_str("\n---\n\n");
+        output.push_str(&spec);
+
+        tool_result(output)
+    }
 }
 
 impl ServerHandler for ToposServer {
@@ -470,6 +565,28 @@ impl ServerHandler for ToposServer {
                         "required": ["path"]
                     }),
                 ),
+                make_tool(
+                    "extract_spec",
+                    "Extract a Topos specification from Rust source files using @topos() annotations in comments",
+                    json!({
+                        "type": "object",
+                        "properties": {
+                            "paths": {
+                                "oneOf": [
+                                    { "type": "string" },
+                                    { "type": "array", "items": { "type": "string" } }
+                                ],
+                                "description": "Path(s) to Rust files or directories. Supports glob patterns (e.g., 'src/**/*.rs')"
+                            },
+                            "spec_name": {
+                                "type": "string",
+                                "description": "Name for the generated specification",
+                                "default": "ExtractedSpec"
+                            }
+                        },
+                        "required": ["paths"]
+                    }),
+                ),
             ],
             next_cursor: None,
             meta: None,
@@ -490,6 +607,7 @@ impl ServerHandler for ToposServer {
             "summarize_spec" => self.summarize_spec(&args),
             "compile_context" => self.compile_context_tool(&args),
             "suggest_hole" => self.suggest_hole(&args),
+            "extract_spec" => self.extract_spec(&args),
             _ => tool_error(format!("Unknown tool: {}", request.name)),
         };
         Ok(result)
