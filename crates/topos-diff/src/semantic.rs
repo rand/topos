@@ -231,8 +231,8 @@ pub fn semantic_diff_sync(
 /// Perform semantic analysis on structural differences.
 async fn perform_semantic_analysis(
     structural: &DiffReport,
-    _old_source: &str,
-    _new_source: &str,
+    old_source: &str,
+    new_source: &str,
     options: &SemanticDiffOptions,
 ) -> Result<SemanticDiffReport, String> {
     // Check if MCP client is available
@@ -250,29 +250,112 @@ async fn perform_semantic_analysis(
     // Analyze modified requirements
     for req_diff in &structural.modified_requirements {
         if should_analyze_semantically(ElementType::Requirement, &options.strategy) {
-            // In a full implementation, we would extract the old/new content
-            // and call client.analyze_semantic_drift()
-            // For now, we create placeholder results
-            semantic_results.push(SemanticElementResult {
-                element_id: req_diff.id.clone(),
-                element_type: "requirement".to_string(),
-                alignment_score: 0.85, // Placeholder
-                discrepancies: Vec::new(),
-                confidence: 0.0, // No actual analysis
-            });
+            // Extract requirement content from both sources
+            let old_content = extract_requirement_content(old_source, &req_diff.id);
+            let new_content = extract_requirement_content(new_source, &req_diff.id);
+
+            if let (Some(old), Some(new)) = (old_content, new_content) {
+                match client
+                    .analyze_semantic_drift(&old, &new, "requirement", &req_diff.id)
+                    .await
+                {
+                    Ok(analysis) => {
+                        semantic_results.push(SemanticElementResult {
+                            element_id: req_diff.id.clone(),
+                            element_type: "requirement".to_string(),
+                            alignment_score: analysis.alignment_score,
+                            discrepancies: analysis
+                                .discrepancies
+                                .into_iter()
+                                .map(|d| SemanticDiscrepancy {
+                                    kind: format!("{:?}", d.kind),
+                                    description: d.description,
+                                    severity: format!("{:?}", d.severity).to_lowercase(),
+                                })
+                                .collect(),
+                            confidence: analysis.confidence,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Semantic analysis failed for {}: {}",
+                            req_diff.id,
+                            e
+                        );
+                        // Use structural info as fallback
+                        semantic_results.push(SemanticElementResult {
+                            element_id: req_diff.id.clone(),
+                            element_type: "requirement".to_string(),
+                            alignment_score: 0.5, // Unknown - structural changes detected
+                            discrepancies: req_diff
+                                .changes
+                                .iter()
+                                .map(|c| SemanticDiscrepancy {
+                                    kind: "structural".to_string(),
+                                    description: c.clone(),
+                                    severity: "info".to_string(),
+                                })
+                                .collect(),
+                            confidence: 0.0,
+                        });
+                    }
+                }
+            }
         }
     }
 
     // Analyze modified behaviors
     for beh_diff in &structural.modified_behaviors {
         if should_analyze_semantically(ElementType::Behavior, &options.strategy) {
-            semantic_results.push(SemanticElementResult {
-                element_id: beh_diff.name.clone(),
-                element_type: "behavior".to_string(),
-                alignment_score: 0.9, // Placeholder
-                discrepancies: Vec::new(),
-                confidence: 0.0,
-            });
+            let old_content = extract_behavior_content(old_source, &beh_diff.name);
+            let new_content = extract_behavior_content(new_source, &beh_diff.name);
+
+            if let (Some(old), Some(new)) = (old_content, new_content) {
+                match client
+                    .analyze_semantic_drift(&old, &new, "behavior", &beh_diff.name)
+                    .await
+                {
+                    Ok(analysis) => {
+                        semantic_results.push(SemanticElementResult {
+                            element_id: beh_diff.name.clone(),
+                            element_type: "behavior".to_string(),
+                            alignment_score: analysis.alignment_score,
+                            discrepancies: analysis
+                                .discrepancies
+                                .into_iter()
+                                .map(|d| SemanticDiscrepancy {
+                                    kind: format!("{:?}", d.kind),
+                                    description: d.description,
+                                    severity: format!("{:?}", d.severity).to_lowercase(),
+                                })
+                                .collect(),
+                            confidence: analysis.confidence,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Semantic analysis failed for {}: {}",
+                            beh_diff.name,
+                            e
+                        );
+                        semantic_results.push(SemanticElementResult {
+                            element_id: beh_diff.name.clone(),
+                            element_type: "behavior".to_string(),
+                            alignment_score: 0.5,
+                            discrepancies: beh_diff
+                                .changes
+                                .iter()
+                                .map(|c| SemanticDiscrepancy {
+                                    kind: "structural".to_string(),
+                                    description: c.clone(),
+                                    severity: "info".to_string(),
+                                })
+                                .collect(),
+                            confidence: 0.0,
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -297,6 +380,47 @@ async fn perform_semantic_analysis(
         strategy: options.strategy.name().to_string(),
         semantic_available: true,
     })
+}
+
+/// Extract the content of a requirement from source text.
+fn extract_requirement_content(source: &str, req_id: &str) -> Option<String> {
+    // Look for requirement header pattern: ## REQ-N: Title
+    let pattern = format!("## {}:", req_id);
+    let start_idx = source.find(&pattern)?;
+
+    // Find the end of this requirement (next ## or # or end of file)
+    let content_start = start_idx;
+    let rest = &source[start_idx..];
+
+    // Find next section header
+    let end_idx = rest[3..] // Skip the initial "## "
+        .find("\n## ")
+        .or_else(|| rest[3..].find("\n# "))
+        .map(|i| start_idx + 3 + i)
+        .unwrap_or(source.len());
+
+    Some(source[content_start..end_idx].trim().to_string())
+}
+
+/// Extract the content of a behavior from source text.
+fn extract_behavior_content(source: &str, behavior_name: &str) -> Option<String> {
+    // Look for behavior pattern: Behavior Name:
+    let pattern = format!("Behavior {}:", behavior_name);
+    let start_idx = source.find(&pattern)?;
+
+    // Find the end of this behavior (next Behavior, Concept, #, or double newline)
+    let content_start = start_idx;
+    let rest = &source[start_idx..];
+
+    let end_idx = rest[1..]
+        .find("\nBehavior ")
+        .or_else(|| rest[1..].find("\nConcept "))
+        .or_else(|| rest[1..].find("\n# "))
+        .or_else(|| rest[1..].find("\n\n\n"))
+        .map(|i| start_idx + 1 + i)
+        .unwrap_or(source.len());
+
+    Some(source[content_start..end_idx].trim().to_string())
 }
 
 /// Check if an element type should be analyzed semantically given the strategy.
@@ -401,5 +525,64 @@ mod tests {
 
         let report = semantic_diff_sync(old, new, options).unwrap();
         assert!(!report.semantic_available);
+    }
+
+    #[test]
+    fn test_extract_requirement_content() {
+        let source = r#"spec Test
+
+# Requirements
+
+## REQ-1: First requirement
+This is the first requirement.
+It has multiple lines.
+
+## REQ-2: Second requirement
+This is another requirement.
+"#;
+
+        let content = extract_requirement_content(source, "REQ-1");
+        assert!(content.is_some());
+        let content = content.unwrap();
+        assert!(content.contains("REQ-1: First requirement"));
+        assert!(content.contains("multiple lines"));
+        assert!(!content.contains("REQ-2"));
+
+        let content2 = extract_requirement_content(source, "REQ-2");
+        assert!(content2.is_some());
+        assert!(content2.unwrap().contains("another requirement"));
+
+        // Non-existent requirement
+        assert!(extract_requirement_content(source, "REQ-99").is_none());
+    }
+
+    #[test]
+    fn test_extract_behavior_content() {
+        let source = r#"spec Test
+
+# Behaviors
+
+Behavior create_order:
+  when: user submits order
+  then: order is created
+
+Behavior cancel_order:
+  when: user cancels
+  then: order is cancelled
+"#;
+
+        let content = extract_behavior_content(source, "create_order");
+        assert!(content.is_some());
+        let content = content.unwrap();
+        assert!(content.contains("create_order"));
+        assert!(content.contains("user submits order"));
+        assert!(!content.contains("cancel_order"));
+
+        let content2 = extract_behavior_content(source, "cancel_order");
+        assert!(content2.is_some());
+        assert!(content2.unwrap().contains("user cancels"));
+
+        // Non-existent behavior
+        assert!(extract_behavior_content(source, "unknown").is_none());
     }
 }

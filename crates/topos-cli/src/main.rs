@@ -69,7 +69,7 @@ enum Commands {
         #[arg(long, conflicts_with = "structural")]
         semantic: bool,
     },
-    /// Format Topos files (placeholder)
+    /// Format Topos files
     Format {
         /// Files to format
         #[arg(value_name = "FILES")]
