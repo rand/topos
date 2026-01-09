@@ -30,6 +30,7 @@
 pub mod db;
 pub mod diagnostics;
 pub mod foreign;
+pub mod holes;
 pub mod polyglot;
 pub mod resolve;
 pub mod symbols;
@@ -48,6 +49,7 @@ pub use symbols::{symbols as compute_symbols, Symbol, SymbolKind, SymbolTable};
 pub use traceability::{traceability as compute_traceability, TraceNode, TraceNodeKind, TraceabilityGraph};
 pub use foreign::{foreign_symbols as compute_foreign_symbols, ForeignSymbol, ForeignSymbolKind, ForeignSymbols};
 pub use polyglot::{unified_symbols as compute_unified_symbols, resolve_reference, resolve_type_reference, UnifiedSymbol, UnifiedSymbolTable};
+pub use holes::{extract_holes, HoleCollection, HoleParent, HoleWithContext, SignaturePosition};
 
 // ============================================================================
 // Legacy API (for backward compatibility with existing LSP/CLI)

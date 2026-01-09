@@ -6,6 +6,7 @@
 //! - Go-to-definition
 //! - Find references
 //! - Completions
+//! - Code actions (fill typed holes with suggestions)
 
 use dashmap::DashMap;
 use tokio::sync::Mutex;
@@ -14,8 +15,9 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use topos_analysis::{
-    compute_diagnostics, compute_traceability, compute_unified_symbols, resolve_references,
-    AnalysisDatabase, ForeignSymbolKind, ReferenceKind, UnifiedSymbol,
+    compute_diagnostics, compute_traceability, compute_unified_symbols, extract_holes,
+    resolve_references, AnalysisDatabase, ForeignSymbolKind, HoleParent, ReferenceKind,
+    UnifiedSymbol,
 };
 use topos_syntax::Span;
 
@@ -357,6 +359,139 @@ impl ToposServer {
         items
     }
 
+    /// Get code actions at a position (e.g., fill hole suggestions).
+    async fn code_actions(&self, uri: &Url, range: Range) -> Vec<CodeActionOrCommand> {
+        let Some(file) = self.get_file(uri) else {
+            return vec![];
+        };
+        let db = self.db.lock().await;
+
+        // Extract holes from the document
+        let holes = extract_holes(&*db, file);
+
+        if holes.is_empty() {
+            return vec![];
+        }
+
+        let mut actions = vec![];
+
+        // Check if any hole overlaps with the requested range
+        for hole_ctx in &holes.holes {
+            let hole_range = span_to_range(&hole_ctx.span());
+
+            // Check if ranges overlap
+            if ranges_overlap(&range, &hole_range) {
+                // Generate suggestions based on hole context
+                let suggestions = self.generate_hole_suggestions(hole_ctx);
+
+                for (idx, (label, new_text)) in suggestions.into_iter().enumerate() {
+                    let edit = TextEdit {
+                        range: hole_range,
+                        new_text,
+                    };
+
+                    let mut changes = std::collections::HashMap::new();
+                    changes.insert(uri.clone(), vec![edit]);
+
+                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                        title: label,
+                        kind: Some(CodeActionKind::QUICKFIX),
+                        diagnostics: None,
+                        edit: Some(WorkspaceEdit {
+                            changes: Some(changes),
+                            document_changes: None,
+                            change_annotations: None,
+                        }),
+                        command: None,
+                        is_preferred: Some(idx == 0), // First suggestion is preferred
+                        disabled: None,
+                        data: None,
+                    }));
+                }
+            }
+        }
+
+        actions
+    }
+
+    /// Generate suggestions for filling a hole based on its context.
+    fn generate_hole_suggestions(
+        &self,
+        hole_ctx: &topos_analysis::HoleWithContext,
+    ) -> Vec<(String, String)> {
+        let mut suggestions = vec![];
+
+        // If there's a type hint, suggest using it directly
+        if let Some(ref type_hint) = hole_ctx.type_hint {
+            suggestions.push((
+                format!("Fill with type: {}", type_hint),
+                format!("({})", type_hint),
+            ));
+        }
+
+        // Generate context-aware suggestions based on parent
+        match &hole_ctx.parent {
+            HoleParent::ConceptField { field_name, .. } => {
+                // Suggest based on field name patterns
+                if field_name.contains("id") {
+                    suggestions.push(("Fill with `String` (common ID type)".to_string(), "(`String`)".to_string()));
+                    suggestions.push(("Fill with `UUID` (unique ID type)".to_string(), "(`UUID`)".to_string()));
+                }
+                if field_name.contains("date") || field_name.contains("time") || field_name.contains("at") {
+                    suggestions.push(("Fill with `DateTime`".to_string(), "(`DateTime`)".to_string()));
+                    suggestions.push(("Fill with `Timestamp`".to_string(), "(`Timestamp`)".to_string()));
+                }
+                if field_name.contains("status") || field_name.contains("state") {
+                    suggestions.push(("Fill with `Enum` (define a status enum)".to_string(), "(`Status`)".to_string()));
+                }
+                if field_name.contains("amount") || field_name.contains("price") || field_name.contains("total") || field_name.contains("cost") {
+                    suggestions.push(("Fill with `Currency`".to_string(), "(`Currency`)".to_string()));
+                    suggestions.push(("Fill with `Decimal`".to_string(), "(`Decimal`)".to_string()));
+                }
+                if field_name.contains("email") {
+                    suggestions.push(("Fill with `Email`".to_string(), "(`Email`)".to_string()));
+                }
+                if field_name.contains("name") || field_name.contains("title") || field_name.contains("description") {
+                    suggestions.push(("Fill with `String`".to_string(), "(`String`)".to_string()));
+                }
+                if field_name.contains("count") || field_name.contains("number") || field_name.contains("quantity") {
+                    suggestions.push(("Fill with `Int`".to_string(), "(`Int`)".to_string()));
+                }
+                if field_name.contains("enabled") || field_name.contains("active") || field_name.contains("is_") {
+                    suggestions.push(("Fill with `Bool`".to_string(), "(`Bool`)".to_string()));
+                }
+            }
+            HoleParent::BehaviorSignature { .. } => {
+                suggestions.push(("Fill with input type".to_string(), "(`Input`)".to_string()));
+            }
+            HoleParent::BehaviorReturns { .. } => {
+                suggestions.push(("Fill with `Result<T, E>`".to_string(), "(`Result<Success, Error>`)".to_string()));
+                suggestions.push(("Fill with `Option<T>`".to_string(), "(`Option<Value>`)".to_string()));
+            }
+            HoleParent::BehaviorConstraint { .. } => {
+                suggestions.push(("Fill with constraint expression".to_string(), "(value > 0)".to_string()));
+            }
+            HoleParent::Unknown => {}
+        }
+
+        // If we have related concepts, suggest them
+        for concept in &hole_ctx.related_concepts {
+            suggestions.push((
+                format!("Fill with related concept: `{}`", concept),
+                format!("(`{}`)", concept),
+            ));
+        }
+
+        // Default suggestions if nothing else matched
+        if suggestions.is_empty() {
+            suggestions.push(("Fill with `String`".to_string(), "(`String`)".to_string()));
+            suggestions.push(("Fill with `Int`".to_string(), "(`Int`)".to_string()));
+            suggestions.push(("Fill with `Bool`".to_string(), "(`Bool`)".to_string()));
+        }
+
+        suggestions
+    }
+
     /// Convert LSP position to byte offset.
     fn position_to_offset(&self, uri: &Url, position: Position) -> Option<usize> {
         let state = self.documents.get(uri)?;
@@ -399,6 +534,15 @@ fn span_contains(span: &Span, offset: usize) -> bool {
     offset >= span.start as usize && offset < span.end as usize
 }
 
+/// Check if two LSP ranges overlap.
+fn ranges_overlap(a: &Range, b: &Range) -> bool {
+    // Ranges overlap if neither is entirely before the other
+    !(a.end.line < b.start.line
+        || (a.end.line == b.start.line && a.end.character < b.start.character)
+        || b.end.line < a.start.line
+        || (b.end.line == a.start.line && b.end.character < a.start.character))
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for ToposServer {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
@@ -422,6 +566,12 @@ impl LanguageServer for ToposServer {
                     ]),
                     ..Default::default()
                 }),
+                code_action_provider: Some(CodeActionProviderCapability::Options(
+                    CodeActionOptions {
+                        code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+                        ..Default::default()
+                    },
+                )),
                 ..ServerCapabilities::default()
             },
         })
@@ -492,6 +642,17 @@ impl LanguageServer for ToposServer {
             None
         } else {
             Some(CompletionResponse::Array(items))
+        })
+    }
+
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let uri = params.text_document.uri;
+        let range = params.range;
+        let actions = self.code_actions(&uri, range).await;
+        Ok(if actions.is_empty() {
+            None
+        } else {
+            Some(actions)
         })
     }
 }

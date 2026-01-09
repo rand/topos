@@ -6,6 +6,7 @@
 //! - `validate_spec` - Validate a spec file and return diagnostics
 //! - `summarize_spec` - Get an AI-friendly summary of a spec
 //! - `compile_context` - Compile task-focused context
+//! - `suggest_hole` - Get LLM-powered suggestions for typed holes
 //!
 //! ## Client
 //!
@@ -223,6 +224,144 @@ impl ToposServer {
             None => tool_error(format!("Error: Task '{}' not found in {}", task_id, path)),
         }
     }
+
+    /// Handle suggest_hole tool call.
+    ///
+    /// Returns LLM-powered suggestions for filling a typed hole at the specified position.
+    fn suggest_hole(&self, args: &Value) -> CallToolResult {
+        let path = match args.get("path").and_then(|v| v.as_str()) {
+            Some(p) => p,
+            None => return tool_error("Error: Missing 'path' argument"),
+        };
+
+        // Position can be specified by line/column or offset
+        let line = args.get("line").and_then(|v| v.as_u64()).map(|v| v as u32);
+        let column = args.get("column").and_then(|v| v.as_u64()).map(|v| v as u32);
+        let offset = args.get("offset").and_then(|v| v.as_u64()).map(|v| v as u32);
+
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => return tool_error(format!("Error: Failed to read file {}: {}", path, e)),
+        };
+
+        let mut db = AnalysisDatabase::new();
+        let file = db.add_file(path.to_string(), content.clone());
+
+        // Extract all holes from the file
+        let holes = topos_analysis::extract_holes(&db, file);
+
+        if holes.is_empty() {
+            return tool_error("No typed holes found in the specification");
+        }
+
+        // Find the specific hole
+        let hole = if let (Some(line), Some(column)) = (line, column) {
+            holes.find_at(line, column)
+        } else if let Some(off) = offset {
+            holes.find_at_offset(off)
+        } else {
+            // If no position specified, use the first hole
+            holes.holes.first()
+        };
+
+        let hole = match hole {
+            Some(h) => h,
+            None => return tool_error("No hole found at the specified position"),
+        };
+
+        // Build context for suggestions
+        let mut output = String::new();
+        output.push_str("# Typed Hole Suggestions\n\n");
+        output.push_str(&format!("## Hole Context\n\n{}\n", hole.prompt_context()));
+
+        // Get surrounding context from the spec
+        output.push_str("## Surrounding Code\n\n```topos\n");
+        let span = hole.span();
+        let lines: Vec<&str> = content.lines().collect();
+        let start_line = span.start_line.saturating_sub(3) as usize;
+        let end_line = (span.end_line + 3).min(lines.len() as u32) as usize;
+        for (i, line) in lines.iter().enumerate().skip(start_line).take(end_line - start_line) {
+            let marker = if i as u32 >= span.start_line && i as u32 <= span.end_line {
+                ">>>"
+            } else {
+                "   "
+            };
+            output.push_str(&format!("{} {:4} | {}\n", marker, i + 1, line));
+        }
+        output.push_str("```\n\n");
+
+        // Generate suggestions based on context
+        output.push_str("## Suggestions\n\n");
+
+        // Provide type-aware suggestions
+        if let Some(ref type_hint) = hole.type_hint {
+            output.push_str(&format!(
+                "Based on the type constraint `{}`, consider:\n\n",
+                type_hint
+            ));
+            output.push_str(&format!("1. `{}` - Use the specified type directly\n", type_hint));
+        } else {
+            output.push_str("No type constraint specified. Consider:\n\n");
+        }
+
+        // Add context-aware suggestions based on parent
+        match &hole.parent {
+            topos_analysis::HoleParent::ConceptField { concept_name, field_name } => {
+                output.push_str(&format!(
+                    "\nFor field `{}` in concept `{}`:\n",
+                    field_name, concept_name
+                ));
+                // Common field type patterns
+                if field_name.contains("id") {
+                    output.push_str("- `String` or `UUID` - Common ID types\n");
+                }
+                if field_name.contains("date") || field_name.contains("time") {
+                    output.push_str("- `DateTime` or `Timestamp` - For temporal data\n");
+                }
+                if field_name.contains("status") || field_name.contains("state") {
+                    output.push_str("- `Enum` type - Consider defining a status enum\n");
+                }
+                if field_name.contains("amount") || field_name.contains("price") || field_name.contains("total") {
+                    output.push_str("- `Currency` or `Decimal` - For monetary values\n");
+                }
+            }
+            topos_analysis::HoleParent::BehaviorSignature { behavior_name, position } => {
+                output.push_str(&format!(
+                    "\nFor {} of behavior `{}`:\n",
+                    position.description().to_lowercase(),
+                    behavior_name
+                ));
+                output.push_str("- Consider what types flow through this behavior\n");
+            }
+            topos_analysis::HoleParent::BehaviorReturns { behavior_name } => {
+                output.push_str(&format!(
+                    "\nFor returns clause of behavior `{}`:\n",
+                    behavior_name
+                ));
+                output.push_str("- `Result<T, E>` - For fallible operations\n");
+                output.push_str("- `Option<T>` - For nullable returns\n");
+            }
+            topos_analysis::HoleParent::BehaviorConstraint { behavior_name, constraint_kind } => {
+                output.push_str(&format!(
+                    "\nFor {} constraint of behavior `{}`:\n",
+                    constraint_kind, behavior_name
+                ));
+                output.push_str("- Consider what invariants should hold\n");
+            }
+            topos_analysis::HoleParent::Unknown => {}
+        }
+
+        // Related concepts
+        if !hole.related_concepts.is_empty() {
+            output.push_str("\n## Related Concepts\n\n");
+            output.push_str("These concepts are used nearby and might be relevant:\n\n");
+            for concept in &hole.related_concepts {
+                output.push_str(&format!("- `{}`\n", concept));
+            }
+        }
+
+        tool_result(output)
+    }
 }
 
 impl ServerHandler for ToposServer {
@@ -305,6 +444,32 @@ impl ServerHandler for ToposServer {
                         "required": ["path", "task_id"]
                     }),
                 ),
+                make_tool(
+                    "suggest_hole",
+                    "Get suggestions for filling a typed hole ([?]) in a Topos specification, with context-aware type recommendations",
+                    json!({
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "Path to the Topos specification file (.tps)"
+                            },
+                            "line": {
+                                "type": "integer",
+                                "description": "Line number (0-indexed) where the hole is located"
+                            },
+                            "column": {
+                                "type": "integer",
+                                "description": "Column number (0-indexed) where the hole is located"
+                            },
+                            "offset": {
+                                "type": "integer",
+                                "description": "Byte offset of the hole in the file (alternative to line/column)"
+                            }
+                        },
+                        "required": ["path"]
+                    }),
+                ),
             ],
             next_cursor: None,
             meta: None,
@@ -324,6 +489,7 @@ impl ServerHandler for ToposServer {
             "validate_spec" => self.validate_spec(&args),
             "summarize_spec" => self.summarize_spec(&args),
             "compile_context" => self.compile_context_tool(&args),
+            "suggest_hole" => self.suggest_hole(&args),
             _ => tool_error(format!("Unknown tool: {}", request.name)),
         };
         Ok(result)
