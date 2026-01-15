@@ -68,6 +68,26 @@ impl Anchor {
     pub fn field_name(&self) -> Option<&str> {
         self.get("field")
     }
+
+    /// Get all implements references.
+    pub fn implements(&self) -> Vec<&str> {
+        self.attributes
+            .iter()
+            .filter(|(k, _)| k.starts_with("implements"))
+            .map(|(_, v)| v.as_str())
+            .collect()
+    }
+
+    /// Get a human-readable string for the anchor kind.
+    pub fn kind_str(&self) -> &'static str {
+        match self.kind {
+            AnchorKind::Concept => "concept",
+            AnchorKind::Behavior => "behavior",
+            AnchorKind::Field => "field",
+            AnchorKind::Requirement => "requirement",
+            AnchorKind::Unknown => "unknown",
+        }
+    }
 }
 
 /// The kind of element being annotated.
@@ -166,6 +186,15 @@ impl AnchorCollection {
     /// Create an empty collection.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a collection from an iterator of anchors.
+    pub fn from_anchors(anchors: impl IntoIterator<Item = Anchor>) -> Self {
+        let mut collection = Self::new();
+        for anchor in anchors {
+            collection.add(anchor);
+        }
+        collection
     }
 
     /// Add an anchor to the collection.
@@ -716,6 +745,13 @@ pub struct OrphanSpecElement {
     pub kind: AnchorReferenceKind,
 }
 
+impl OrphanSpecElement {
+    /// Get a human-readable string for the element kind.
+    pub fn kind_str(&self) -> &'static str {
+        self.kind.as_str()
+    }
+}
+
 /// Kind of reference from anchor to spec element.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnchorReferenceKind {
@@ -725,6 +761,17 @@ pub enum AnchorReferenceKind {
     Concept,
     /// Reference to a behavior.
     Behavior,
+}
+
+impl AnchorReferenceKind {
+    /// Get a human-readable string for the reference kind.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Requirement => "Requirement",
+            Self::Concept => "Concept",
+            Self::Behavior => "Behavior",
+        }
+    }
 }
 
 impl AnchorValidation {

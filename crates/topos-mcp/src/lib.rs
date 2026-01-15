@@ -367,6 +367,7 @@ impl ToposServer {
     /// Handle extract_spec tool call.
     ///
     /// Extracts Topos spec from Rust source files using `@topos()` annotations.
+    /// Supports filtering, validation against existing spec, and diff mode.
     fn extract_spec(&self, args: &Value) -> CallToolResult {
         let paths = match args.get("paths") {
             Some(Value::Array(arr)) => arr
@@ -386,6 +387,16 @@ impl ToposServer {
             .get("spec_name")
             .and_then(|v| v.as_str())
             .unwrap_or("ExtractedSpec");
+
+        // Filter options
+        let filter_kind = args.get("filter_kind").and_then(|v| v.as_str());
+        let filter_concept = args.get("filter_concept").and_then(|v| v.as_str());
+        let filter_requirement = args.get("filter_requirement").and_then(|v| v.as_str());
+        let filter_behavior = args.get("filter_behavior").and_then(|v| v.as_str());
+
+        // Validation options
+        let compare_spec_path = args.get("compare_spec").and_then(|v| v.as_str());
+        let validate = args.get("validate").and_then(|v| v.as_bool()).unwrap_or(false);
 
         // Expand glob patterns and collect all Rust files
         let mut rust_files = Vec::new();
@@ -419,14 +430,19 @@ impl ToposServer {
         }
 
         // Extract anchors from all files
-        let collection = topos_analysis::extract_anchors_from_files(&rust_files);
+        let mut collection = topos_analysis::extract_anchors_from_files(&rust_files);
 
         if collection.is_empty() {
             return tool_error("No @topos() annotations found in the provided files");
         }
 
-        // Generate the spec
-        let spec = collection.generate_spec(spec_name);
+        // Apply filters
+        if filter_kind.is_some() || filter_concept.is_some() || filter_requirement.is_some() || filter_behavior.is_some() {
+            collection = self.filter_anchors(collection, filter_kind, filter_concept, filter_requirement, filter_behavior);
+            if collection.is_empty() {
+                return tool_error("No anchors match the specified filters");
+            }
+        }
 
         // Build output with summary
         let mut output = String::new();
@@ -452,10 +468,152 @@ impl ToposServer {
                 .filter(|a| a.kind == topos_analysis::AnchorKind::Field)
                 .count()
         ));
+
+        // Validation against existing spec
+        if validate || compare_spec_path.is_some() {
+            if let Some(spec_path) = compare_spec_path {
+                match std::fs::read_to_string(spec_path) {
+                    Ok(spec_content) => {
+                        let mut db = AnalysisDatabase::new();
+                        let file = db.add_file(spec_path.to_string(), spec_content);
+                        let symbols = topos_analysis::compute_symbols(&db, file);
+
+                        let validation = topos_analysis::validate_anchors(&collection, &symbols);
+
+                        output.push_str("\n## Validation Results\n\n");
+
+                        if !validation.invalid.is_empty() {
+                            output.push_str(&format!("### ❌ Invalid Anchors ({} found)\n\n", validation.invalid.len()));
+                            output.push_str("These anchors reference spec elements that don't exist:\n\n");
+                            for invalid in &validation.invalid {
+                                output.push_str(&format!(
+                                    "- `{}` at {}:{} - references undefined '{}'\n",
+                                    invalid.anchor.kind_str(),
+                                    invalid.anchor.file_path,
+                                    invalid.anchor.line + 1,
+                                    invalid.unresolved_reference
+                                ));
+                                if !invalid.suggestions.is_empty() {
+                                    output.push_str(&format!("  Did you mean: {}?\n", invalid.suggestions.join(", ")));
+                                }
+                            }
+                            output.push('\n');
+                        }
+
+                        if !validation.orphan_spec_elements.is_empty() {
+                            output.push_str(&format!("### ⚠️ Orphan Spec Elements ({} found)\n\n", validation.orphan_spec_elements.len()));
+                            output.push_str("These spec elements have no code anchor:\n\n");
+                            for orphan in &validation.orphan_spec_elements {
+                                output.push_str(&format!("- {} `{}`\n", orphan.kind_str(), orphan.name));
+                            }
+                            output.push('\n');
+                        }
+
+                        if !validation.valid.is_empty() {
+                            output.push_str(&format!("### ✅ Valid Anchors ({} found)\n\n", validation.valid.len()));
+                        }
+
+                        // Identify new elements (in code but not in spec)
+                        let new_concepts: Vec<_> = collection.concepts()
+                            .filter(|a| a.concept_name().map_or(false, |c| !symbols.concepts.contains_key(c)))
+                            .collect();
+                        let new_behaviors: Vec<_> = collection.behaviors()
+                            .filter(|a| a.behavior_name().map_or(false, |b| !symbols.behaviors.contains_key(b)))
+                            .collect();
+
+                        if !new_concepts.is_empty() || !new_behaviors.is_empty() {
+                            output.push_str("### 🆕 New Elements (not in spec)\n\n");
+                            output.push_str("These anchors define elements not yet in the spec:\n\n");
+                            for anchor in &new_concepts {
+                                if let Some(concept) = anchor.concept_name() {
+                                    output.push_str(&format!("- Concept `{}` at {}:{}\n", concept, anchor.file_path, anchor.line + 1));
+                                }
+                            }
+                            for anchor in &new_behaviors {
+                                if let Some(behavior) = anchor.behavior_name() {
+                                    output.push_str(&format!("- Behavior `{}` at {}:{}\n", behavior, anchor.file_path, anchor.line + 1));
+                                }
+                            }
+                            output.push('\n');
+                        }
+                    }
+                    Err(e) => {
+                        output.push_str(&format!("\n⚠️ Could not read comparison spec: {}\n\n", e));
+                    }
+                }
+            }
+        }
+
         output.push_str("\n---\n\n");
+
+        // Generate the spec
+        let spec = collection.generate_spec(spec_name);
         output.push_str(&spec);
 
         tool_result(output)
+    }
+
+    /// Filter anchors based on criteria.
+    fn filter_anchors(
+        &self,
+        collection: topos_analysis::AnchorCollection,
+        filter_kind: Option<&str>,
+        filter_concept: Option<&str>,
+        filter_requirement: Option<&str>,
+        filter_behavior: Option<&str>,
+    ) -> topos_analysis::AnchorCollection {
+        let filtered = collection
+            .anchors
+            .into_iter()
+            .filter(|anchor| {
+                // Filter by kind
+                if let Some(kind) = filter_kind {
+                    let matches_kind = match kind.to_lowercase().as_str() {
+                        "concept" => anchor.kind == topos_analysis::AnchorKind::Concept,
+                        "behavior" => anchor.kind == topos_analysis::AnchorKind::Behavior,
+                        "field" => anchor.kind == topos_analysis::AnchorKind::Field,
+                        _ => true,
+                    };
+                    if !matches_kind {
+                        return false;
+                    }
+                }
+
+                // Filter by concept name
+                if let Some(concept_filter) = filter_concept {
+                    if let Some(concept) = anchor.concept_name() {
+                        if !concept.contains(concept_filter) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+
+                // Filter by requirement
+                if let Some(req_filter) = filter_requirement {
+                    let has_req = anchor.req_id().map_or(false, |r| r.contains(req_filter))
+                        || anchor.implements().iter().any(|i| i.contains(req_filter));
+                    if !has_req {
+                        return false;
+                    }
+                }
+
+                // Filter by behavior name
+                if let Some(behavior_filter) = filter_behavior {
+                    if let Some(behavior) = anchor.behavior_name() {
+                        if !behavior.contains(behavior_filter) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+
+                true
+            });
+
+        topos_analysis::AnchorCollection::from_anchors(filtered)
     }
 }
 
@@ -567,7 +725,7 @@ impl ServerHandler for ToposServer {
                 ),
                 make_tool(
                     "extract_spec",
-                    "Extract a Topos specification from Rust source files using @topos() annotations in comments",
+                    "Extract a Topos specification from Rust source files using @topos() annotations. Supports filtering by kind/concept/requirement/behavior and validation against existing spec.",
                     json!({
                         "type": "object",
                         "properties": {
@@ -582,6 +740,32 @@ impl ServerHandler for ToposServer {
                                 "type": "string",
                                 "description": "Name for the generated specification",
                                 "default": "ExtractedSpec"
+                            },
+                            "filter_kind": {
+                                "type": "string",
+                                "enum": ["concept", "behavior", "field"],
+                                "description": "Filter anchors by kind (concept, behavior, or field)"
+                            },
+                            "filter_concept": {
+                                "type": "string",
+                                "description": "Filter to anchors matching this concept name (substring match)"
+                            },
+                            "filter_requirement": {
+                                "type": "string",
+                                "description": "Filter to anchors referencing this requirement (e.g., 'REQ-AUTH')"
+                            },
+                            "filter_behavior": {
+                                "type": "string",
+                                "description": "Filter to anchors matching this behavior name (substring match)"
+                            },
+                            "compare_spec": {
+                                "type": "string",
+                                "description": "Path to existing Topos spec file to compare against. Shows validation results and identifies new/changed elements."
+                            },
+                            "validate": {
+                                "type": "boolean",
+                                "description": "Enable validation mode (requires compare_spec). Reports invalid anchors and orphan spec elements.",
+                                "default": false
                             }
                         },
                         "required": ["paths"]
@@ -665,5 +849,101 @@ mod tests {
         let tool = make_tool("test", "A test tool", json!({"type": "object"}));
         assert_eq!(&*tool.name, "test");
         assert!(tool.description.is_some());
+    }
+
+    #[test]
+    fn test_extract_spec_missing_paths() {
+        let server = ToposServer::new();
+        let result = server.extract_spec(&json!({}));
+        assert_eq!(result.is_error, Some(true));
+        assert!(result.content[0].as_text().unwrap().text.contains("Missing 'paths'"));
+    }
+
+    #[test]
+    fn test_extract_spec_with_filter() {
+        use std::io::Write;
+        let server = ToposServer::new();
+
+        // Create a temp file with anchors
+        let mut temp_file = tempfile::Builder::new()
+            .suffix(".rs")
+            .tempfile()
+            .unwrap();
+        writeln!(
+            temp_file,
+            r#"// @topos(concept="User")
+pub struct User {{}}
+
+// @topos(concept="Order")
+pub struct Order {{}}
+
+// @topos(behavior="create_order", implements="REQ-1")
+pub fn create_order() {{}}"#
+        )
+        .unwrap();
+
+        let path = temp_file.path().to_str().unwrap();
+
+        // Test filter by kind=concept (should exclude behavior)
+        let result = server.extract_spec(&json!({
+            "paths": path,
+            "filter_kind": "concept"
+        }));
+        assert_eq!(result.is_error, Some(false));
+        let text = &result.content[0].as_text().unwrap().text;
+        assert!(text.contains("User"));
+        assert!(text.contains("Order"));
+        assert!(!text.contains("create_order"));
+
+        // Test filter by concept name
+        let result = server.extract_spec(&json!({
+            "paths": path,
+            "filter_concept": "User"
+        }));
+        assert_eq!(result.is_error, Some(false));
+        let text = &result.content[0].as_text().unwrap().text;
+        assert!(text.contains("User"));
+        assert!(!text.contains("Order"));
+    }
+
+    #[test]
+    fn test_filter_anchors() {
+        let server = ToposServer::new();
+
+        // Create a collection with various anchors
+        let mut collection = topos_analysis::AnchorCollection::new();
+
+        // Add a concept anchor
+        let mut attrs1 = std::collections::HashMap::new();
+        attrs1.insert("concept".to_string(), "User".to_string());
+        collection.add(topos_analysis::Anchor {
+            kind: topos_analysis::AnchorKind::Concept,
+            attributes: attrs1,
+            file_path: "test.rs".to_string(),
+            line: 0,
+            code_element: None,
+        });
+
+        // Add a behavior anchor
+        let mut attrs2 = std::collections::HashMap::new();
+        attrs2.insert("behavior".to_string(), "create_user".to_string());
+        attrs2.insert("implements".to_string(), "REQ-1".to_string());
+        collection.add(topos_analysis::Anchor {
+            kind: topos_analysis::AnchorKind::Behavior,
+            attributes: attrs2,
+            file_path: "test.rs".to_string(),
+            line: 5,
+            code_element: None,
+        });
+
+        // Filter by kind
+        let filtered = server.filter_anchors(collection.clone(), Some("concept"), None, None, None);
+        assert_eq!(filtered.len(), 1);
+        assert!(filtered.concept("User").is_some());
+
+        // Filter by requirement
+        let filtered = server.filter_anchors(collection.clone(), None, None, Some("REQ-1"), None);
+        assert_eq!(filtered.len(), 1);
+        assert!(filtered.behavior("create_user").is_some());
     }
 }
