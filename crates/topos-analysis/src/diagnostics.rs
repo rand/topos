@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use topos_syntax::Span;
 
+use crate::anchors::{AnchorReferenceKind, AnchorValidation};
 use crate::db::{self, Db};
 use crate::resolve::{resolve_references, ReferenceKind};
 use crate::symbols::symbols;
@@ -38,6 +39,10 @@ pub enum DiagnosticKind {
     UntaskedRequirement,
     /// Duplicate symbol definition.
     DuplicateDefinition,
+    /// Anchor references non-existent spec element.
+    InvalidAnchor,
+    /// Spec element has no code anchor implementation.
+    OrphanSpecElement,
 }
 
 /// Diagnostic severity.
@@ -160,6 +165,137 @@ fn check_traceability(db: &dyn Db, file: db::SourceFile, diags: &mut SemanticDia
     }
 }
 
+// ============================================================================
+// Anchor Diagnostics
+// ============================================================================
+
+/// Generate diagnostics from anchor validation results.
+///
+/// This function creates diagnostics for:
+/// - Invalid anchors (references to non-existent spec elements)
+/// - Orphan spec elements (spec elements with no code implementation)
+///
+/// Since anchors come from Rust files, the diagnostics include file path and
+/// line number information rather than Topos span locations.
+pub fn anchor_diagnostics(validation: &AnchorValidation) -> SemanticDiagnostics {
+    let mut diags = SemanticDiagnostics::default();
+
+    // Report invalid anchors as errors
+    for invalid in &validation.invalid {
+        let kind_str = match invalid.reference_kind {
+            AnchorReferenceKind::Requirement => "requirement",
+            AnchorReferenceKind::Concept => "concept",
+            AnchorReferenceKind::Behavior => "behavior",
+        };
+
+        let suggestion_str = if !invalid.suggestions.is_empty() {
+            format!(". Did you mean: {}?", invalid.suggestions.join(", "))
+        } else {
+            String::new()
+        };
+
+        diags.diagnostics.push(SemanticDiagnostic {
+            kind: DiagnosticKind::InvalidAnchor,
+            message: format!(
+                "Anchor references undefined {} '{}' at {}:{}{}",
+                kind_str,
+                invalid.unresolved_reference,
+                invalid.anchor.file_path,
+                invalid.anchor.line + 1, // 1-indexed for display
+                suggestion_str
+            ),
+            span: Span::dummy(), // Anchors are in Rust files, not Topos files
+            severity: Severity::Error,
+        });
+    }
+
+    // Report orphan spec elements as warnings
+    for orphan in &validation.orphan_spec_elements {
+        let kind_str = match orphan.kind {
+            AnchorReferenceKind::Requirement => "Requirement",
+            AnchorReferenceKind::Concept => "Concept",
+            AnchorReferenceKind::Behavior => "Behavior",
+        };
+
+        diags.diagnostics.push(SemanticDiagnostic {
+            kind: DiagnosticKind::OrphanSpecElement,
+            message: format!(
+                "{} '{}' has no @topos anchor in code",
+                kind_str, orphan.name
+            ),
+            span: Span::dummy(),
+            severity: Severity::Warning,
+        });
+    }
+
+    diags
+}
+
+/// Anchor diagnostic with source location.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnchorDiagnostic {
+    /// The diagnostic kind.
+    pub kind: DiagnosticKind,
+    /// The message.
+    pub message: String,
+    /// Source file path.
+    pub file_path: String,
+    /// Line number (0-indexed).
+    pub line: usize,
+    /// Severity level.
+    pub severity: Severity,
+}
+
+/// Generate detailed anchor diagnostics with file locations.
+pub fn detailed_anchor_diagnostics(validation: &AnchorValidation) -> Vec<AnchorDiagnostic> {
+    let mut diags = Vec::new();
+
+    // Report invalid anchors as errors
+    for invalid in &validation.invalid {
+        let kind_str = match invalid.reference_kind {
+            AnchorReferenceKind::Requirement => "requirement",
+            AnchorReferenceKind::Concept => "concept",
+            AnchorReferenceKind::Behavior => "behavior",
+        };
+
+        let suggestion_str = if !invalid.suggestions.is_empty() {
+            format!(". Did you mean: {}?", invalid.suggestions.join(", "))
+        } else {
+            String::new()
+        };
+
+        diags.push(AnchorDiagnostic {
+            kind: DiagnosticKind::InvalidAnchor,
+            message: format!(
+                "Anchor references undefined {} '{}'{}",
+                kind_str, invalid.unresolved_reference, suggestion_str
+            ),
+            file_path: invalid.anchor.file_path.clone(),
+            line: invalid.anchor.line,
+            severity: Severity::Error,
+        });
+    }
+
+    // Report orphan spec elements as warnings (no specific file location)
+    for orphan in &validation.orphan_spec_elements {
+        let kind_str = match orphan.kind {
+            AnchorReferenceKind::Requirement => "Requirement",
+            AnchorReferenceKind::Concept => "Concept",
+            AnchorReferenceKind::Behavior => "Behavior",
+        };
+
+        diags.push(AnchorDiagnostic {
+            kind: DiagnosticKind::OrphanSpecElement,
+            message: format!("{} '{}' has no @topos anchor in code", kind_str, orphan.name),
+            file_path: String::new(), // Spec-level warning
+            line: 0,
+            severity: Severity::Warning,
+        });
+    }
+
+    diags
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,5 +403,89 @@ Concept Post:
         assert!(diags.has_errors(), "Expected unresolved type error");
         let error = diags.errors().next().unwrap();
         assert!(error.message.contains("UnknownType"));
+    }
+
+    // ========================================================================
+    // Anchor diagnostics tests
+    // ========================================================================
+
+    #[test]
+    fn test_anchor_diagnostics_invalid_reference() {
+        use crate::anchors::{extract_anchors, validate_anchors};
+        use crate::symbols::SymbolTable;
+
+        // Create anchors referencing non-existent spec elements
+        let rust_source = r#"
+// @topos(req="REQ-NONEXISTENT", concept="MissingConcept")
+pub struct Order {}
+"#;
+        let anchors = extract_anchors(rust_source, "test.rs");
+
+        // Empty symbol table - no spec elements defined
+        let symbols = SymbolTable::new();
+        let validation = validate_anchors(&anchors, &symbols);
+
+        let diags = anchor_diagnostics(&validation);
+        assert!(diags.has_errors());
+
+        let errors: Vec<_> = diags.errors().collect();
+        assert_eq!(errors.len(), 2); // REQ-NONEXISTENT and MissingConcept
+
+        assert!(errors.iter().any(|e| e.kind == DiagnosticKind::InvalidAnchor));
+        assert!(errors.iter().any(|e| e.message.contains("REQ-NONEXISTENT")));
+        assert!(errors.iter().any(|e| e.message.contains("MissingConcept")));
+    }
+
+    #[test]
+    fn test_anchor_diagnostics_orphan_elements() {
+        use crate::anchors::{extract_anchors, validate_anchors};
+        use crate::symbols::{Symbol, SymbolKind, SymbolTable};
+        use topos_syntax::Span;
+
+        // No anchors
+        let anchors = extract_anchors("pub fn foo() {}", "test.rs");
+
+        // Symbol table with spec elements
+        let mut symbols = SymbolTable::new();
+        symbols.add(Symbol {
+            name: "REQ-ORPHAN".to_string(),
+            kind: SymbolKind::Requirement,
+            title: Some("Orphan Requirement".to_string()),
+            status: None,
+            file: None,
+            tests: None,
+            span: Span::dummy(),
+        });
+
+        let validation = validate_anchors(&anchors, &symbols);
+        let diags = anchor_diagnostics(&validation);
+
+        let warnings: Vec<_> = diags.warnings().collect();
+        assert!(!warnings.is_empty());
+        assert!(warnings.iter().any(|w| w.kind == DiagnosticKind::OrphanSpecElement));
+        assert!(warnings.iter().any(|w| w.message.contains("REQ-ORPHAN")));
+    }
+
+    #[test]
+    fn test_detailed_anchor_diagnostics() {
+        use crate::anchors::{extract_anchors, validate_anchors};
+        use crate::symbols::SymbolTable;
+
+        let rust_source = r#"
+// @topos(concept="NonExistent")
+pub struct Test {}
+"#;
+        let anchors = extract_anchors(rust_source, "src/models.rs");
+        let symbols = SymbolTable::new();
+        let validation = validate_anchors(&anchors, &symbols);
+
+        let diags = detailed_anchor_diagnostics(&validation);
+        assert!(!diags.is_empty());
+
+        let error = &diags[0];
+        assert_eq!(error.kind, DiagnosticKind::InvalidAnchor);
+        assert_eq!(error.file_path, "src/models.rs");
+        assert_eq!(error.line, 1); // 0-indexed
+        assert!(error.message.contains("NonExistent"));
     }
 }

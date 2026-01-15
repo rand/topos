@@ -42,8 +42,9 @@ use tree_sitter::{Language, Node, Parser, Tree};
 // Re-exports for convenience
 pub use db::{parse as parse_file, AnalysisDatabase, Db, SourceFile};
 pub use diagnostics::{
-    diagnostics as compute_diagnostics, DiagnosticKind, SemanticDiagnostic, SemanticDiagnostics,
-    Severity as SemanticSeverity,
+    anchor_diagnostics, detailed_anchor_diagnostics,
+    diagnostics as compute_diagnostics, AnchorDiagnostic, DiagnosticKind,
+    SemanticDiagnostic, SemanticDiagnostics, Severity as SemanticSeverity,
 };
 pub use resolve::{resolve_references, Reference, ReferenceKind, ResolvedReference, ResolvedReferences};
 pub use symbols::{symbols as compute_symbols, Symbol, SymbolKind, SymbolTable};
@@ -51,7 +52,11 @@ pub use traceability::{traceability as compute_traceability, TraceNode, TraceNod
 pub use foreign::{foreign_symbols as compute_foreign_symbols, ForeignSymbol, ForeignSymbolKind, ForeignSymbols};
 pub use polyglot::{unified_symbols as compute_unified_symbols, resolve_reference, resolve_type_reference, UnifiedSymbol, UnifiedSymbolTable};
 pub use holes::{extract_holes, HoleCollection, HoleParent, HoleWithContext, SignaturePosition};
-pub use anchors::{extract_anchors, extract_anchors_from_files, Anchor, AnchorCollection, AnchorKind, CodeElement, CodeElementKind};
+pub use anchors::{
+    extract_anchors, extract_anchors_from_files, validate_anchors,
+    Anchor, AnchorCollection, AnchorKind, AnchorReferenceKind, AnchorValidation,
+    CodeElement, CodeElementKind, InvalidAnchor, OrphanSpecElement, ValidatedAnchor,
+};
 
 // ============================================================================
 // Legacy API (for backward compatibility with existing LSP/CLI)

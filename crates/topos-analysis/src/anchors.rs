@@ -22,8 +22,10 @@ use std::path::Path;
 use regex::Regex;
 use tree_sitter::{Node, Parser};
 
+use crate::symbols::SymbolTable;
+
 /// A parsed `@topos()` annotation from source code.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Anchor {
     /// The type of anchor.
     pub kind: AnchorKind,
@@ -101,7 +103,7 @@ impl AnchorKind {
 }
 
 /// A code element associated with an anchor.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodeElement {
     /// The element type.
     pub kind: CodeElementKind,
@@ -145,7 +147,7 @@ pub enum CodeElementKind {
 }
 
 /// Collection of anchors extracted from source files.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AnchorCollection {
     /// All extracted anchors.
     pub anchors: Vec<Anchor>,
@@ -666,6 +668,206 @@ pub fn extract_anchors_from_files<P: AsRef<Path>>(paths: &[P]) -> AnchorCollecti
     collection
 }
 
+// ============================================================================
+// Anchor Validation
+// ============================================================================
+
+/// Result of validating anchors against a spec.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AnchorValidation {
+    /// Valid anchors that reference existing spec elements.
+    pub valid: Vec<ValidatedAnchor>,
+    /// Invalid anchors that reference non-existent spec elements.
+    pub invalid: Vec<InvalidAnchor>,
+    /// Orphan anchors in the spec that have no code implementation.
+    pub orphan_spec_elements: Vec<OrphanSpecElement>,
+}
+
+/// A validated anchor with its resolved spec reference.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedAnchor {
+    /// The original anchor.
+    pub anchor: Anchor,
+    /// The referenced spec element ID.
+    pub spec_reference: String,
+    /// The kind of reference.
+    pub reference_kind: AnchorReferenceKind,
+}
+
+/// An invalid anchor referencing a non-existent spec element.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidAnchor {
+    /// The original anchor.
+    pub anchor: Anchor,
+    /// The reference that couldn't be resolved.
+    pub unresolved_reference: String,
+    /// The kind of reference that was attempted.
+    pub reference_kind: AnchorReferenceKind,
+    /// Suggested similar spec elements (for typo correction).
+    pub suggestions: Vec<String>,
+}
+
+/// A spec element with no corresponding code anchor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrphanSpecElement {
+    /// The spec element name.
+    pub name: String,
+    /// The kind of element.
+    pub kind: AnchorReferenceKind,
+}
+
+/// Kind of reference from anchor to spec element.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnchorReferenceKind {
+    /// Reference to a requirement.
+    Requirement,
+    /// Reference to a concept.
+    Concept,
+    /// Reference to a behavior.
+    Behavior,
+}
+
+impl AnchorValidation {
+    /// Check if validation passed (no invalid anchors).
+    pub fn is_valid(&self) -> bool {
+        self.invalid.is_empty()
+    }
+
+    /// Get count of all anchors.
+    pub fn total_anchors(&self) -> usize {
+        self.valid.len() + self.invalid.len()
+    }
+}
+
+/// Validate anchors against a spec's symbol table.
+///
+/// This function checks that:
+/// 1. All requirement references (`req="..."`, `implements="..."`) exist in the spec
+/// 2. All concept references (`concept="..."`) exist in the spec
+/// 3. All behavior references (`behavior="..."`) exist in the spec
+///
+/// It also identifies spec elements that have no corresponding code anchors.
+pub fn validate_anchors(anchors: &AnchorCollection, symbols: &SymbolTable) -> AnchorValidation {
+    let mut validation = AnchorValidation::default();
+
+    // Track which spec elements are referenced
+    let mut referenced_requirements = std::collections::HashSet::new();
+    let mut referenced_concepts = std::collections::HashSet::new();
+    let mut referenced_behaviors = std::collections::HashSet::new();
+
+    for anchor in &anchors.anchors {
+        // Check requirement references
+        if let Some(req_id) = anchor.req_id() {
+            if symbols.requirements.contains_key(req_id) {
+                referenced_requirements.insert(req_id.to_string());
+                validation.valid.push(ValidatedAnchor {
+                    anchor: anchor.clone(),
+                    spec_reference: req_id.to_string(),
+                    reference_kind: AnchorReferenceKind::Requirement,
+                });
+            } else {
+                let suggestions = find_similar_names(req_id, symbols.requirements.keys());
+                validation.invalid.push(InvalidAnchor {
+                    anchor: anchor.clone(),
+                    unresolved_reference: req_id.to_string(),
+                    reference_kind: AnchorReferenceKind::Requirement,
+                    suggestions,
+                });
+            }
+        }
+
+        // Check concept references
+        if let Some(concept_name) = anchor.concept_name() {
+            if symbols.concepts.contains_key(concept_name) {
+                referenced_concepts.insert(concept_name.to_string());
+                validation.valid.push(ValidatedAnchor {
+                    anchor: anchor.clone(),
+                    spec_reference: concept_name.to_string(),
+                    reference_kind: AnchorReferenceKind::Concept,
+                });
+            } else {
+                let suggestions = find_similar_names(concept_name, symbols.concepts.keys());
+                validation.invalid.push(InvalidAnchor {
+                    anchor: anchor.clone(),
+                    unresolved_reference: concept_name.to_string(),
+                    reference_kind: AnchorReferenceKind::Concept,
+                    suggestions,
+                });
+            }
+        }
+
+        // Check behavior references
+        if let Some(behavior_name) = anchor.behavior_name() {
+            if symbols.behaviors.contains_key(behavior_name) {
+                referenced_behaviors.insert(behavior_name.to_string());
+                validation.valid.push(ValidatedAnchor {
+                    anchor: anchor.clone(),
+                    spec_reference: behavior_name.to_string(),
+                    reference_kind: AnchorReferenceKind::Behavior,
+                });
+            } else {
+                let suggestions = find_similar_names(behavior_name, symbols.behaviors.keys());
+                validation.invalid.push(InvalidAnchor {
+                    anchor: anchor.clone(),
+                    unresolved_reference: behavior_name.to_string(),
+                    reference_kind: AnchorReferenceKind::Behavior,
+                    suggestions,
+                });
+            }
+        }
+    }
+
+    // Find orphan spec elements (in spec but not referenced by any anchor)
+    for req_id in symbols.requirements.keys() {
+        if !referenced_requirements.contains(req_id) {
+            validation.orphan_spec_elements.push(OrphanSpecElement {
+                name: req_id.clone(),
+                kind: AnchorReferenceKind::Requirement,
+            });
+        }
+    }
+
+    for concept_name in symbols.concepts.keys() {
+        if !referenced_concepts.contains(concept_name) {
+            validation.orphan_spec_elements.push(OrphanSpecElement {
+                name: concept_name.clone(),
+                kind: AnchorReferenceKind::Concept,
+            });
+        }
+    }
+
+    for behavior_name in symbols.behaviors.keys() {
+        if !referenced_behaviors.contains(behavior_name) {
+            validation.orphan_spec_elements.push(OrphanSpecElement {
+                name: behavior_name.clone(),
+                kind: AnchorReferenceKind::Behavior,
+            });
+        }
+    }
+
+    validation
+}
+
+/// Find similar names using simple edit distance heuristic.
+fn find_similar_names<'a, I>(target: &str, candidates: I) -> Vec<String>
+where
+    I: Iterator<Item = &'a String>,
+{
+    let target_lower = target.to_lowercase();
+    candidates
+        .filter(|name| {
+            let name_lower = name.to_lowercase();
+            // Simple similarity check: prefix match or contains
+            name_lower.starts_with(&target_lower)
+                || target_lower.starts_with(&name_lower)
+                || name_lower.contains(&target_lower)
+                || target_lower.contains(&name_lower)
+        })
+        .take(3)
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -812,5 +1014,123 @@ pub struct Order {
         let collection = extract_anchors(source, "test.rs");
         assert_eq!(collection.len(), 1);
         assert_eq!(collection.anchors[0].concept_name(), Some("Order"));
+    }
+
+    // ========================================================================
+    // Validation tests
+    // ========================================================================
+
+    fn create_test_symbol_table() -> SymbolTable {
+        use crate::symbols::{Symbol, SymbolKind};
+        use topos_syntax::Span;
+
+        let mut symbols = SymbolTable::new();
+
+        // Add a requirement
+        symbols.add(Symbol {
+            name: "REQ-AUTH-1".to_string(),
+            kind: SymbolKind::Requirement,
+            title: Some("User Authentication".to_string()),
+            status: None,
+            file: None,
+            tests: None,
+            span: Span::dummy(),
+        });
+
+        // Add a concept
+        symbols.add(Symbol {
+            name: "User".to_string(),
+            kind: SymbolKind::Concept,
+            title: None,
+            status: None,
+            file: None,
+            tests: None,
+            span: Span::dummy(),
+        });
+
+        // Add a behavior
+        symbols.add(Symbol {
+            name: "authenticate".to_string(),
+            kind: SymbolKind::Behavior,
+            title: None,
+            status: None,
+            file: None,
+            tests: None,
+            span: Span::dummy(),
+        });
+
+        symbols
+    }
+
+    #[test]
+    fn test_validate_anchors_all_valid() {
+        let source = r#"
+// @topos(req="REQ-AUTH-1", concept="User")
+pub struct User {
+    pub id: u64,
+}
+
+// @topos(behavior="authenticate", implements="REQ-AUTH-1")
+pub fn authenticate() -> bool {
+    true
+}
+"#;
+        let anchors = extract_anchors(source, "test.rs");
+        let symbols = create_test_symbol_table();
+        let validation = validate_anchors(&anchors, &symbols);
+
+        assert!(validation.is_valid());
+        assert!(!validation.valid.is_empty());
+        assert!(validation.invalid.is_empty());
+    }
+
+    #[test]
+    fn test_validate_anchors_invalid_reference() {
+        let source = r#"
+// @topos(req="REQ-NONEXISTENT", concept="Order")
+pub struct Order {
+    pub id: u64,
+}
+"#;
+        let anchors = extract_anchors(source, "test.rs");
+        let symbols = create_test_symbol_table();
+        let validation = validate_anchors(&anchors, &symbols);
+
+        assert!(!validation.is_valid());
+        assert_eq!(validation.invalid.len(), 2); // REQ-NONEXISTENT and Order
+    }
+
+    #[test]
+    fn test_validate_anchors_orphan_spec_elements() {
+        let source = r#"
+// @topos(concept="User")
+pub struct User {}
+"#;
+        let anchors = extract_anchors(source, "test.rs");
+        let symbols = create_test_symbol_table();
+        let validation = validate_anchors(&anchors, &symbols);
+
+        // REQ-AUTH-1 and authenticate behavior are orphaned (not referenced)
+        assert!(!validation.orphan_spec_elements.is_empty());
+        let orphan_names: Vec<_> = validation
+            .orphan_spec_elements
+            .iter()
+            .map(|o| &o.name)
+            .collect();
+        assert!(orphan_names.contains(&&"REQ-AUTH-1".to_string()));
+        assert!(orphan_names.contains(&&"authenticate".to_string()));
+    }
+
+    #[test]
+    fn test_find_similar_names() {
+        let candidates = vec![
+            "REQ-AUTH-1".to_string(),
+            "REQ-AUTH-2".to_string(),
+            "REQ-ORDER-1".to_string(),
+        ];
+        let suggestions = find_similar_names("REQ-AUTH", candidates.iter());
+        assert!(suggestions.contains(&"REQ-AUTH-1".to_string()));
+        assert!(suggestions.contains(&"REQ-AUTH-2".to_string()));
+        assert!(!suggestions.contains(&"REQ-ORDER-1".to_string()));
     }
 }
