@@ -444,3 +444,162 @@ fn test_multi_task_context() {
         .stdout(predicate::str::contains("REQ-AUTH-1"))
         .stdout(predicate::str::contains("REQ-AUTH-2"));
 }
+
+// ============================================================================
+// Gather command tests
+// ============================================================================
+
+/// Helper to create a temporary git repository
+fn create_git_repo(dir: &TempDir) {
+    use std::process::Command as StdCommand;
+    StdCommand::new("git")
+        .args(["init"])
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to init git repo");
+    StdCommand::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to set git email");
+    StdCommand::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to set git name");
+}
+
+#[test]
+fn test_gather_dry_run() {
+    let dir = TempDir::new().unwrap();
+    create_git_repo(&dir);
+    let spec_path = create_spec_file(&dir, "spec.tps", VALID_SPEC);
+
+    // Gather in dry-run mode
+    topos()
+        .arg("gather")
+        .arg(&spec_path)
+        .arg("--dry-run")
+        .current_dir(&dir)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_gather_specific_task() {
+    let dir = TempDir::new().unwrap();
+    create_git_repo(&dir);
+    let spec_path = create_spec_file(&dir, "spec.tps", VALID_SPEC);
+
+    // Gather for a specific task
+    topos()
+        .arg("gather")
+        .arg(&spec_path)
+        .arg("TASK-AUTH-1")
+        .arg("--dry-run")
+        .current_dir(&dir)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_gather_no_git_repo() {
+    let dir = TempDir::new().unwrap();
+    let spec_path = create_spec_file(&dir, "spec.tps", VALID_SPEC);
+
+    // Gather without git repo should fail gracefully
+    topos()
+        .arg("gather")
+        .arg(&spec_path)
+        .current_dir(&dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("git").or(predicate::str::contains("repository")));
+}
+
+// ============================================================================
+// Extract command tests
+// ============================================================================
+
+const ANNOTATED_RUST_FILE: &str = r#"
+// @topos(behavior="login", implements="REQ-LOGIN-1")
+pub fn login(email: &str, password: &str) -> Result<Session, AuthError> {
+    todo!()
+}
+
+// @topos(concept="Session")
+pub struct Session {
+    // @topos(field="id")
+    pub id: String,
+    // @topos(field="user_id")
+    pub user_id: String,
+    // @topos(field="expires_at")
+    pub expires_at: u64,
+}
+"#;
+
+#[test]
+fn test_extract_from_rust_file() {
+    let dir = TempDir::new().unwrap();
+    let rust_path = dir.path().join("auth.rs");
+    fs::write(&rust_path, ANNOTATED_RUST_FILE).unwrap();
+
+    topos()
+        .arg("extract")
+        .arg(&rust_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("spec"))
+        .stdout(predicate::str::contains("Session"));
+}
+
+#[test]
+fn test_extract_with_custom_name() {
+    let dir = TempDir::new().unwrap();
+    let rust_path = dir.path().join("service.rs");
+    fs::write(&rust_path, ANNOTATED_RUST_FILE).unwrap();
+
+    topos()
+        .arg("extract")
+        .arg(&rust_path)
+        .arg("--spec-name")
+        .arg("MyService")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("MyService"));
+}
+
+#[test]
+fn test_extract_to_file() {
+    let dir = TempDir::new().unwrap();
+    let rust_path = dir.path().join("auth.rs");
+    let output_path = dir.path().join("extracted.tps");
+    fs::write(&rust_path, ANNOTATED_RUST_FILE).unwrap();
+
+    topos()
+        .arg("extract")
+        .arg(&rust_path)
+        .arg("--output")
+        .arg(&output_path)
+        .assert()
+        .success();
+
+    // Verify file was created
+    assert!(output_path.exists());
+    let content = fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains("spec"));
+}
+
+#[test]
+fn test_extract_no_annotations() {
+    let dir = TempDir::new().unwrap();
+    let rust_path = dir.path().join("plain.rs");
+    fs::write(&rust_path, "pub fn foo() {}").unwrap();
+
+    // Should succeed but produce minimal output
+    topos()
+        .arg("extract")
+        .arg(&rust_path)
+        .assert()
+        .success();
+}
