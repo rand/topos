@@ -16,6 +16,7 @@
 //! - LLM-as-Judge for prose requirement verification
 
 pub mod client;
+pub mod llm;
 
 use std::sync::Arc;
 
@@ -229,7 +230,8 @@ impl ToposServer {
     /// Handle suggest_hole tool call.
     ///
     /// Returns LLM-powered suggestions for filling a typed hole at the specified position.
-    fn suggest_hole(&self, args: &Value) -> CallToolResult {
+    /// Falls back to heuristic suggestions if LLM is unavailable.
+    async fn suggest_hole(&self, args: &Value) -> CallToolResult {
         let path = match args.get("path").and_then(|v| v.as_str()) {
             Some(p) => p,
             None => return tool_error("Error: Missing 'path' argument"),
@@ -239,6 +241,12 @@ impl ToposServer {
         let line = args.get("line").and_then(|v| v.as_u64()).map(|v| v as u32);
         let column = args.get("column").and_then(|v| v.as_u64()).map(|v| v as u32);
         let offset = args.get("offset").and_then(|v| v.as_u64()).map(|v| v as u32);
+
+        // Whether to use LLM (default true if available)
+        let use_llm = args
+            .get("use_llm")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
 
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
@@ -270,15 +278,77 @@ impl ToposServer {
             None => return tool_error("No hole found at the specified position"),
         };
 
-        // Build context for suggestions
+        // Build surrounding code context
+        let span = hole.span();
+        let lines: Vec<&str> = content.lines().collect();
+        let start_line = span.start_line.saturating_sub(5) as usize;
+        let end_line = (span.end_line + 5).min(lines.len() as u32) as usize;
+        let surrounding_code: String = lines[start_line..end_line].join("\n");
+
+        // Build the parent context string
+        let parent_context = match &hole.parent {
+            topos_analysis::HoleParent::ConceptField { concept_name, field_name } => {
+                format!("field {} in Concept {}", field_name, concept_name)
+            }
+            topos_analysis::HoleParent::BehaviorSignature { behavior_name, position } => {
+                format!("{} of Behavior {}", position.description(), behavior_name)
+            }
+            topos_analysis::HoleParent::BehaviorReturns { behavior_name } => {
+                format!("returns clause of Behavior {}", behavior_name)
+            }
+            topos_analysis::HoleParent::BehaviorConstraint { behavior_name, constraint_kind } => {
+                format!("{} constraint of Behavior {}", constraint_kind, behavior_name)
+            }
+            topos_analysis::HoleParent::Unknown => "unknown context".to_string(),
+        };
+
+        // Get spec name from parsed AST
+        let parsed = topos_analysis::db::parse(&db, file);
+        let spec_name = parsed.spec.as_ref().map(|s| s.name.value.clone());
+
+        // Build HoleContext for LLM
+        let hole_context = llm::HoleContext {
+            type_hint: hole.type_hint.clone(),
+            name: hole.name.clone(),
+            parent_context,
+            surrounding_code,
+            related_concepts: hole.related_concepts.clone(),
+            adjacent_constraints: hole.adjacent_constraints.clone(),
+            spec_name,
+        };
+
+        // Try LLM suggestions first
+        let suggestions = if use_llm {
+            let provider = llm::default_provider();
+            if llm::LlmProvider::is_available(&provider) {
+                match provider.suggest_hole(&hole_context).await {
+                    Ok(response) => {
+                        tracing::info!("LLM suggestions received: {} suggestions", response.suggestions.len());
+                        Some(response)
+                    }
+                    Err(e) => {
+                        tracing::warn!("LLM suggestion failed, using fallback: {}", e);
+                        None
+                    }
+                }
+            } else {
+                tracing::debug!("LLM provider not available, using fallback");
+                None
+            }
+        } else {
+            None
+        };
+
+        // Use LLM suggestions or fall back to heuristics
+        let suggestions = suggestions.unwrap_or_else(|| llm::fallback_suggestions(&hole_context));
+
+        // Format output
         let mut output = String::new();
         output.push_str("# Typed Hole Suggestions\n\n");
         output.push_str(&format!("## Hole Context\n\n{}\n", hole.prompt_context()));
 
-        // Get surrounding context from the spec
+        // Show surrounding code
         output.push_str("## Surrounding Code\n\n```topos\n");
-        let span = hole.span();
-        let lines: Vec<&str> = content.lines().collect();
         let start_line = span.start_line.saturating_sub(3) as usize;
         let end_line = (span.end_line + 3).min(lines.len() as u32) as usize;
         for (i, line) in lines.iter().enumerate().skip(start_line).take(end_line - start_line) {
@@ -291,74 +361,32 @@ impl ToposServer {
         }
         output.push_str("```\n\n");
 
-        // Generate suggestions based on context
+        // Show suggestions
         output.push_str("## Suggestions\n\n");
 
-        // Provide type-aware suggestions
-        if let Some(ref type_hint) = hole.type_hint {
-            output.push_str(&format!(
-                "Based on the type constraint `{}`, consider:\n\n",
-                type_hint
-            ));
-            output.push_str(&format!("1. `{}` - Use the specified type directly\n", type_hint));
+        if suggestions.suggestions.is_empty() {
+            output.push_str("No suggestions available.\n");
         } else {
-            output.push_str("No type constraint specified. Consider:\n\n");
+            for (i, suggestion) in suggestions.suggestions.iter().enumerate() {
+                let confidence_bar = "█".repeat((suggestion.confidence * 10.0) as usize);
+                let confidence_empty = "░".repeat(10 - (suggestion.confidence * 10.0) as usize);
+                output.push_str(&format!(
+                    "{}. **`{}`**\n   {}\n   Confidence: {} {:.0}%{}\n\n",
+                    i + 1,
+                    suggestion.replacement,
+                    suggestion.explanation,
+                    confidence_bar + &confidence_empty,
+                    suggestion.confidence * 100.0,
+                    if suggestion.type_based { " (type-based)" } else { "" }
+                ));
+            }
         }
 
-        // Add context-aware suggestions based on parent
-        match &hole.parent {
-            topos_analysis::HoleParent::ConceptField { concept_name, field_name } => {
-                output.push_str(&format!(
-                    "\nFor field `{}` in concept `{}`:\n",
-                    field_name, concept_name
-                ));
-                // Common field type patterns
-                if field_name.contains("id") {
-                    output.push_str("- `String` or `UUID` - Common ID types\n");
-                }
-                if field_name.contains("date") || field_name.contains("time") {
-                    output.push_str("- `DateTime` or `Timestamp` - For temporal data\n");
-                }
-                if field_name.contains("status") || field_name.contains("state") {
-                    output.push_str("- `Enum` type - Consider defining a status enum\n");
-                }
-                if field_name.contains("amount") || field_name.contains("price") || field_name.contains("total") {
-                    output.push_str("- `Currency` or `Decimal` - For monetary values\n");
-                }
-            }
-            topos_analysis::HoleParent::BehaviorSignature { behavior_name, position } => {
-                output.push_str(&format!(
-                    "\nFor {} of behavior `{}`:\n",
-                    position.description().to_lowercase(),
-                    behavior_name
-                ));
-                output.push_str("- Consider what types flow through this behavior\n");
-            }
-            topos_analysis::HoleParent::BehaviorReturns { behavior_name } => {
-                output.push_str(&format!(
-                    "\nFor returns clause of behavior `{}`:\n",
-                    behavior_name
-                ));
-                output.push_str("- `Result<T, E>` - For fallible operations\n");
-                output.push_str("- `Option<T>` - For nullable returns\n");
-            }
-            topos_analysis::HoleParent::BehaviorConstraint { behavior_name, constraint_kind } => {
-                output.push_str(&format!(
-                    "\nFor {} constraint of behavior `{}`:\n",
-                    constraint_kind, behavior_name
-                ));
-                output.push_str("- Consider what invariants should hold\n");
-            }
-            topos_analysis::HoleParent::Unknown => {}
-        }
-
-        // Related concepts
-        if !hole.related_concepts.is_empty() {
-            output.push_str("\n## Related Concepts\n\n");
-            output.push_str("These concepts are used nearby and might be relevant:\n\n");
-            for concept in &hole.related_concepts {
-                output.push_str(&format!("- `{}`\n", concept));
-            }
+        // Add source indicator
+        if suggestions.raw_response.is_some() {
+            output.push_str("\n*Suggestions powered by LLM*\n");
+        } else {
+            output.push_str("\n*Heuristic suggestions (set ANTHROPIC_API_KEY for LLM-powered suggestions)*\n");
         }
 
         tool_result(output)
@@ -699,7 +727,7 @@ impl ServerHandler for ToposServer {
                 ),
                 make_tool(
                     "suggest_hole",
-                    "Get suggestions for filling a typed hole ([?]) in a Topos specification, with context-aware type recommendations",
+                    "Get LLM-powered suggestions for filling a typed hole ([?]) in a Topos specification. Uses Claude for intelligent suggestions based on context, with fallback to heuristics.",
                     json!({
                         "type": "object",
                         "properties": {
@@ -718,6 +746,11 @@ impl ServerHandler for ToposServer {
                             "offset": {
                                 "type": "integer",
                                 "description": "Byte offset of the hole in the file (alternative to line/column)"
+                            },
+                            "use_llm": {
+                                "type": "boolean",
+                                "description": "Whether to use LLM for suggestions (default: true). Set to false for faster heuristic-only suggestions.",
+                                "default": true
                             }
                         },
                         "required": ["path"]
@@ -790,7 +823,7 @@ impl ServerHandler for ToposServer {
             "validate_spec" => self.validate_spec(&args),
             "summarize_spec" => self.summarize_spec(&args),
             "compile_context" => self.compile_context_tool(&args),
-            "suggest_hole" => self.suggest_hole(&args),
+            "suggest_hole" => self.suggest_hole(&args).await,
             "extract_spec" => self.extract_spec(&args),
             _ => tool_error(format!("Unknown tool: {}", request.name)),
         };
