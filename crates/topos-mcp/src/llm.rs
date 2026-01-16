@@ -254,6 +254,75 @@ impl LlmProvider for AnthropicProvider {
 }
 
 impl AnthropicProvider {
+    /// Send an arbitrary prompt to the Anthropic API and get a text response.
+    ///
+    /// This is a general-purpose completion method used by semantic analysis.
+    pub async fn complete(&self, prompt: &str) -> LlmResult<String> {
+        let api_key = self
+            .api_key
+            .as_ref()
+            .ok_or(LlmError::ApiKeyMissing)?;
+
+        let request_body = serde_json::json!({
+            "model": self.model,
+            "max_tokens": 2048,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        });
+
+        let response = self
+            .client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+
+        if response.status() == 429 {
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(60);
+            return Err(LlmError::RateLimited {
+                retry_after_secs: retry_after,
+            });
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(LlmError::RequestFailed(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
+        }
+
+        let response_body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| LlmError::InvalidResponse(e.to_string()))?;
+
+        // Extract text content from Claude response
+        let text = response_body
+            .get("content")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|block| block.get("text"))
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| LlmError::InvalidResponse("No text in response".to_string()))?;
+
+        Ok(text.to_string())
+    }
+
     /// Generate suggestions for a typed hole using the Anthropic API.
     pub async fn suggest_hole(&self, context: &HoleContext) -> LlmResult<SuggestionResponse> {
         let api_key = self

@@ -9,6 +9,8 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
+use crate::llm::LlmProvider;
+
 /// Result type for MCP client operations.
 pub type ClientResult<T> = Result<T, ClientError>;
 
@@ -193,9 +195,25 @@ impl McpClient {
     }
 
     /// Check if the client is in offline mode.
+    ///
+    /// Returns false (i.e., online) if any of the following are true:
+    /// - ANTHROPIC_API_KEY is set (can use Anthropic API directly)
+    /// - TOPOS_MCP_URL is set (can connect to MCP server)
+    /// - TOPOS_MCP_COMMAND is set (can spawn MCP server)
+    ///
+    /// Returns true (offline) if TOPOS_OFFLINE is explicitly set.
     pub fn is_offline(&self) -> bool {
-        std::env::var("TOPOS_OFFLINE").is_ok()
-            || (self.config.server_url.is_none() && self.config.server_command.is_none())
+        // Explicit offline mode
+        if std::env::var("TOPOS_OFFLINE").is_ok() {
+            return true;
+        }
+
+        // Check if any LLM provider is available
+        let has_anthropic = std::env::var("ANTHROPIC_API_KEY").is_ok();
+        let has_mcp_server = self.config.server_url.is_some() || self.config.server_command.is_some();
+
+        // Online if we have any provider
+        !(has_anthropic || has_mcp_server)
     }
 
     /// Connect to the MCP server.
@@ -245,25 +263,28 @@ impl McpClient {
         Ok(analysis)
     }
 
-    /// Send a sampling request to the MCP server.
-    async fn sample(&self, _prompt: &str) -> ClientResult<String> {
-        // In a full implementation, this would:
-        // 1. Connect to the MCP server if not connected
-        // 2. Send a CreateMessageRequest with the prompt
-        // 3. Wait for the response
-        // 4. Extract the text content
-
-        // For now, we simulate the response structure
-        // This will be replaced with actual MCP client calls
-
+    /// Send a sampling request to the MCP server or Anthropic API directly.
+    ///
+    /// This method attempts to get an LLM response in the following order:
+    /// 1. If ANTHROPIC_API_KEY is set, use Anthropic API directly
+    /// 2. Otherwise, return an error indicating no LLM is available
+    async fn sample(&self, prompt: &str) -> ClientResult<String> {
         if self.is_offline() {
             return Err(ClientError::Offline);
         }
 
-        // Placeholder: In production, this connects to actual MCP server
-        // Return an error indicating we need a real server
+        // Try Anthropic API directly if available
+        let provider = crate::llm::default_provider();
+        if provider.is_available() {
+            return provider
+                .complete(prompt)
+                .await
+                .map_err(|e| ClientError::RequestFailed(e.to_string()));
+        }
+
+        // No LLM provider available
         Err(ClientError::ConnectionFailed(
-            "MCP server connection not yet implemented - use TOPOS_OFFLINE=1 for structural-only mode".to_string()
+            "No LLM provider available - set ANTHROPIC_API_KEY or configure MCP server".to_string()
         ))
     }
 
