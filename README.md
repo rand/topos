@@ -175,16 +175,32 @@ The Context Compiler solves the **"context window bottleneck"**—when working o
 
 ### Drift Detection
 
-Detect when code diverges from spec (one-way, best-effort):
+Detect when specs diverge from each other or when code diverges from spec:
 
 ```bash
-topos drift src/models/task.ts
+# Compare two spec versions (structural diff)
+topos drift spec_v1.tps spec_v2.tps --structural
 
-# Output:
-# ⚠ Drift detected in Task model:
-#   Spec: field status (`TaskStatus`): default: `todo`
-#   Code: status has no default value
+# Compare with semantic analysis (LLM-powered)
+topos drift spec_v1.tps spec_v2.tps
+
+# Output with semantic analysis:
+# Drift Report (strategy: hybrid, semantic: available)
+# ==================================================
+#
+# ## Structural Changes
+# Found 2 change(s):
+#
+# ## Requirements
+#   ~ REQ-1 (EARS 'when' clause changed)
+#
+# ## Semantic Analysis
+# - **REQ-1** (requirement): 70% aligned ~ minor drift
+#     - [high] ConstraintWeakened: Modal verb changed from 'must' to 'should'
+#     - [medium] MeaningChanged: Added SSO as alternative authentication method
 ```
+
+Semantic drift detection uses an LLM to analyze whether prose changes in requirements represent meaningful specification changes or just rewording. See [Configuration](#configuration) for API key setup.
 
 ## Technology Stack
 
@@ -259,6 +275,37 @@ cd editors/vscode
 npm install
 npm run package
 code --install-extension topos-*.vsix
+```
+
+## Configuration
+
+### LLM Features (Optional)
+
+Topos can use LLM providers for enhanced features:
+
+- **Semantic drift detection**: Analyze whether prose changes in specs represent meaningful changes
+- **Typed hole suggestions**: Get intelligent suggestions for filling `[?]` placeholders
+
+To enable LLM features, set your Anthropic API key:
+
+```bash
+# Option 1: Create a .env file in your project root
+echo "ANTHROPIC_API_KEY=sk-ant-api03-..." > .env
+
+# Option 2: Set environment variable directly
+export ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+The `.env` file is automatically loaded by the CLI. Add `.env` to your `.gitignore` to keep your API key secure.
+
+**Without an API key**: LLM features gracefully degrade to structural-only analysis. You'll see a helpful message explaining how to enable semantic analysis:
+
+```
+warning: Semantic analysis unavailable, using structural only
+  To enable LLM-based semantic comparison:
+    1. Create a .env file with: ANTHROPIC_API_KEY=sk-ant-...
+    2. Or set the environment variable directly
+    3. Or use --structural to skip this warning
 ```
 
 ## Documentation

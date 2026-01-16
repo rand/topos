@@ -311,10 +311,43 @@ After typing `[?`, completion offers:
 ```
 Suggestions:
   [? `Type` -> `Type`]           Insert typed hole
-  [?name : `Type`]               Insert named typed hole  
+  [?name : `Type`]               Insert named typed hole
   [? given: ... returns: ...]    Insert hole with signature
   [? involving: ...]             Insert hole with concept references
 ```
+
+### LLM-Powered Suggestions (MCP)
+
+When an Anthropic API key is configured, the `suggest_hole` MCP tool provides intelligent suggestions for filling typed holes based on:
+
+- **Type constraints**: If the hole has a type hint, suggestions respect it
+- **Parent context**: The concept field, behavior parameter, or invariant where the hole appears
+- **Related concepts**: Other types referenced in the surrounding spec
+- **Adjacent constraints**: Requirements or invariants that constrain the hole
+
+Example:
+
+```topos
+Concept Session:
+  field id (`UUID`)
+  field user_id (`UUID`)
+  field created_at (`Timestamp`)
+  field expires_at ([?])  # What type should this be?
+```
+
+The LLM analyzes the context and suggests:
+
+```
+1. `Timestamp` (confidence: 95%)
+   Consistent with created_at field pattern and session expiration semantics
+   Type-based: true
+
+2. `Duration` (confidence: 75%)
+   Alternative representation as time-to-live rather than absolute time
+   Type-based: false
+```
+
+To enable LLM suggestions, set `ANTHROPIC_API_KEY` in your environment or `.env` file. See the [README Configuration section](README.md#configuration) for details.
 
 ## Refinement Workflow
 
