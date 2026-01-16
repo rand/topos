@@ -440,8 +440,21 @@ fn diff_requirement(old: &Requirement, new: &Requirement) -> Option<RequirementD
         changes.push("title changed".to_string());
     }
 
+    // Check EARS clause count
     if old.ears_clauses.len() != new.ears_clauses.len() {
         changes.push("EARS clauses changed".to_string());
+    } else {
+        // Check EARS clause content (same count, but content might differ)
+        for (old_clause, new_clause) in old.ears_clauses.iter().zip(new.ears_clauses.iter()) {
+            if old_clause.when.text != new_clause.when.text {
+                changes.push("EARS 'when' clause changed".to_string());
+                break;
+            }
+            if old_clause.shall.text != new_clause.shall.text {
+                changes.push("EARS 'shall' clause changed".to_string());
+                break;
+            }
+        }
     }
 
     if old.acceptance.is_some() != new.acceptance.is_some() {
