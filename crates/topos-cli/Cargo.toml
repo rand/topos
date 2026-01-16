@@ -21,6 +21,7 @@ topos-context = { path = "../topos-context" }
 topos-diff = { path = "../topos-diff" }
 topos-syntax = { path = "../topos-syntax" }
 anyhow.workspace = true
+dotenvy = "0.15"
 tracing.workspace = true
 tracing-subscriber.workspace = true
 colored.workspace = true

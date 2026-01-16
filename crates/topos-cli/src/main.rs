@@ -151,6 +151,20 @@ impl From<ContextFormat> for OutputFormat {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // Load .env file if present (for API keys, etc.)
+    if let Err(e) = dotenvy::dotenv() {
+        // Only warn if .env exists but couldn't be read (not if it's missing)
+        if e.not_found() {
+            // .env doesn't exist - that's fine, use environment variables
+        } else {
+            eprintln!(
+                "{}: Failed to load .env file: {}",
+                "warning".yellow(),
+                e
+            );
+        }
+    }
+
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
@@ -408,7 +422,7 @@ async fn drift_files(
         println!("{} No differences found", "✓".green().bold());
         if !report.semantic_available && strategy.requires_mcp() {
             println!(
-                "{}: Semantic analysis unavailable (set TOPOS_MCP_URL or use --structural)",
+                "{}: Semantic analysis unavailable (add ANTHROPIC_API_KEY to .env or use --structural)",
                 "note".blue()
             );
         }
@@ -421,9 +435,10 @@ async fn drift_files(
             "{}: Semantic analysis unavailable, using structural only",
             "warning".yellow()
         );
-        eprintln!(
-            "  Set TOPOS_MCP_URL to enable LLM-based semantic comparison\n"
-        );
+        eprintln!("  To enable LLM-based semantic comparison:");
+        eprintln!("    1. Create a .env file with: ANTHROPIC_API_KEY=sk-ant-...");
+        eprintln!("    2. Or set the environment variable directly");
+        eprintln!("    3. Or use --structural to skip this warning\n");
     }
 
     match format {
